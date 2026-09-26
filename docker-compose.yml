@@ -1,0 +1,21 @@
+# Local infrastructure. Persistent data lives in Firebase (use `pnpm emulators` locally);
+# Redis only holds the live state of tables in play.
+name: cardroom
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '${CARDROOM_REDIS_PORT:-6380}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  redis-data:

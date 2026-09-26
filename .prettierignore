@@ -1,0 +1,10 @@
+node_modules
+dist
+.next
+coverage
+pnpm-lock.yaml
+packages/ui/cards
+apps/web/public/cards
+playwright-report
+test-results
+*.md

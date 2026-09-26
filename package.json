@@ -1,0 +1,39 @@
+{
+  "name": "cardroom",
+  "private": true,
+  "packageManager": "pnpm@9.12.3",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "pnpm --filter @cardroom/web test:e2e",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "cards:generate": "tsx packages/ui/scripts/generate-cards.ts",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "emulators": "firebase emulators:start --only auth,firestore --import=.firebase-data --export-on-exit",
+    "firebase:deploy-rules": "firebase deploy --only firestore:rules,firestore:indexes"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "firebase-tools": "^15.31.0",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "turbo": "^2.11.4",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.70.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "socket.io": "4.8.4"
+    }
+  }
+}
