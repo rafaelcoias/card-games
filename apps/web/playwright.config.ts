@@ -19,18 +19,21 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer: [
-    {
-      command: 'pnpm --filter @cardroom/server start',
-      url: 'http://localhost:4000/api/health',
-      reuseExistingServer: true,
-      timeout: 60_000,
-    },
-    {
-      command: 'pnpm dev',
-      url: 'http://localhost:3000',
-      reuseExistingServer: true,
-      timeout: 120_000,
-    },
-  ],
+  // Against a deployed site (E2E_BASE_URL) nothing is started locally.
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : [
+        {
+          command: 'pnpm --filter @cardroom/server start',
+          url: 'http://localhost:4000/api/health',
+          reuseExistingServer: true,
+          timeout: 60_000,
+        },
+        {
+          command: 'pnpm dev',
+          url: 'http://localhost:3000',
+          reuseExistingServer: true,
+          timeout: 120_000,
+        },
+      ],
 });

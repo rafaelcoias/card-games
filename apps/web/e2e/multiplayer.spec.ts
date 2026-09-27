@@ -15,7 +15,11 @@ test('two browsers play "Carta Mais Alta" end to end', async ({ browser }) => {
   for (let round = 0; round < 5; round++) {
     for (const page of [ana, rui]) {
       await expect(page.getByText('Escolhe a tua carta')).toBeVisible();
+      const cards = page.locator(hand);
+      const before = await cards.count();
       await tap(page, hand);
+      // Wait for the server to confirm the move: the hand changes (fewer or no clickable cards).
+      await expect(cards).not.toHaveCount(before);
     }
   }
   for (const page of [ana, rui]) {
