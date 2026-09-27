@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "cards:sync": "node scripts/sync-cards.mjs",
+    "og:render": "node scripts/render-og-image.mjs",
     "dev": "pnpm cards:sync && next dev --port 3000",
     "build": "pnpm cards:sync && next build",
     "start": "next start --port ${PORT:-3000}",

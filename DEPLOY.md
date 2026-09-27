@@ -1,4 +1,4 @@
-# Produção — Cardroom
+# Produção — Cards
 
 ## Estado atual
 
@@ -48,7 +48,7 @@ railway config apply         # aplica (e faz redeploy do que for preciso)
 | server | `FIREBASE_SERVICE_ACCOUNT` | chave do Firebase em base64 | **segredo**: só no Railway (ver abaixo) |
 | web | `NEXT_PUBLIC_SITE_URL` | URL do site | `railway.ts` |
 | web | `NEXT_PUBLIC_GAME_SERVER_URL` | URL do servidor | `railway.ts` |
-| web | `NEXT_PUBLIC_FIREBASE_API_KEY`, `_AUTH_DOMAIN`, `_PROJECT_ID`, `_APP_ID` | configuração da app web "Cardroom Web" | `railway.ts` (públicos por natureza) |
+| web | `NEXT_PUBLIC_FIREBASE_API_KEY`, `_AUTH_DOMAIN`, `_PROJECT_ID`, `_APP_ID` | configuração da app web "Cards Web" | `railway.ts` (públicos por natureza) |
 
 Notas:
 - As variáveis `NEXT_PUBLIC_*` entram no build do site. Mudá-las obriga a um novo build, que o
@@ -70,7 +70,7 @@ Depois apaga a chave antiga na Google Cloud Console (*IAM → Service accounts �
 - **Authentication:**
   - Email/Password ativo, com link por e-mail (sem palavra-passe) também ativo.
   - *Authorized domains:* `localhost`, `card-games-production-9d3d.up.railway.app` e os domínios Firebase.
-- **App web registada:** "Cardroom Web" (`1:174144427639:web:53560794a1314e6c9c5872`).
+- **App web registada:** "Cards Web" (`1:174144427639:web:53560794a1314e6c9c5872`).
 - **Firestore** fechado a browsers. Foi verificado: leitura e escrita anónimas com a configuração pública
   devolvem `403`. Só o servidor (Admin SDK) lê e escreve. Para versionar as regras explícitas de
   [`firestore.rules`](firestore.rules), publica-as com a tua conta, porque a chave do servidor não tem permissão
@@ -80,7 +80,7 @@ Depois apaga a chave antiga na Google Cloud Console (*IAM → Service accounts �
 
 1. **Firebase → Authentication → Templates:** muda a língua para **Português**. Em cada modelo, *Customize
    action URL*: `https://card-games-production-9d3d.up.railway.app/auth/action`. A recuperação de
-   palavra-passe e a confirmação de e-mail passam a abrir a página do Cardroom.
+   palavra-passe e a confirmação de e-mail passam a abrir a página do Cards.
 2. **Domínio próprio:**
    - Railway → serviço `web` → *Networking → Custom Domain*;
    - acrescenta o domínio a `domains` em `railway.ts`, a `WEB_URL`/`WEB_ORIGIN` e aos *Authorized domains*

@@ -13,10 +13,26 @@ const fraunces = Fraunces({
   axes: ['opsz'],
 });
 
+const TITLE = 'Cards — cartas online com amigos';
+const DESCRIPTION = 'Joga Mexicana e outros jogos de cartas em tempo real com os teus amigos.';
+
+// Link previews (WhatsApp, Instagram, …) need absolute URLs; the image itself is
+// app/opengraph-image.jpg, rendered by `pnpm og:render`.
 export const metadata: Metadata = {
-  title: { default: 'Cardroom — cartas online com amigos', template: '%s · Cardroom' },
-  description: 'Joga Mexicana e outros jogos de cartas em tempo real com os teus amigos.',
-  icons: { icon: '/icon.svg' },
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
+  title: { default: TITLE, template: '%s · Cards' },
+  description: DESCRIPTION,
+  applicationName: 'Cards',
+  icons: { icon: '/icon.svg', apple: '/apple-icon.png' },
+  openGraph: {
+    type: 'website',
+    siteName: 'Cards',
+    locale: 'pt_PT',
+    url: '/',
+    title: TITLE,
+    description: DESCRIPTION,
+  },
+  twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION },
 };
 
 export const viewport: Viewport = {

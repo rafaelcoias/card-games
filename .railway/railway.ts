@@ -1,5 +1,5 @@
 /**
- * Railway infrastructure for Cardroom (Infrastructure as Code).
+ * Railway infrastructure for Cards (Infrastructure as Code).
  *
  *   railway config plan    # preview what would change
  *   railway config apply   # apply it
