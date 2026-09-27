@@ -69,6 +69,8 @@ export class RoomsService implements OnModuleInit {
     }
     const parsedConfig = module.configSchema.safeParse(input.config);
     if (!parsedConfig.success) throw new AppError(ErrorCode.Validation, 'Invalid game settings');
+    const tableError = module.validateTable?.(parsedConfig.data, input.maxPlayers);
+    if (tableError) throw new AppError(tableError.code, tableError.message);
 
     await this.leaveCurrentRoom(user.id);
     const id = randomUUID();

@@ -1,4 +1,4 @@
-import type { DomainEvent, GameRanking } from '@cardroom/game-core';
+import type { DomainEvent, GameStanding, Outcome } from '@cardroom/game-core';
 
 export type RoomStatus = 'OPEN' | 'PLAYING' | 'CLOSED';
 
@@ -14,13 +14,14 @@ export interface RoomPlayer {
   away: boolean;
 }
 
-export interface RankedPlayer extends GameRanking {
+export interface PlayerStanding extends GameStanding {
   username: string;
 }
 
 export interface MatchResult {
   matchId: string;
-  rankings: RankedPlayer[];
+  /** Every player, best first (empty when aborted). */
+  standings: PlayerStanding[];
   /** `true` when the match ended because every remaining player was away. */
   aborted: boolean;
 }
@@ -97,9 +98,9 @@ export interface GameCatalogEntry {
 
 export interface GameStats {
   played: number;
-  /** Finished first. */
+  /** Outcome WINNER (finished first). */
   wins: number;
-  /** Finished last (in Mexicana: the loser). */
+  /** Outcome LOSER (Mexicana: last one left; Fodinha: reached the points limit). */
   losses: number;
 }
 
@@ -121,14 +122,24 @@ export interface MeResponse {
   profile: ProfileDto | null;
 }
 
+export interface MatchHistoryPlayer {
+  username: string;
+  position: number | null;
+  outcome: Outcome | null;
+  score: number | null;
+}
+
 export interface MatchHistoryEntry {
   id: string;
   gameId: string;
   gameName: string;
   startedAt: string;
   finishedAt: string | null;
+  /** The viewer's own result in this match. */
   position: number | null;
-  players: { username: string; position: number | null }[];
+  outcome: Outcome | null;
+  score: number | null;
+  players: MatchHistoryPlayer[];
 }
 
 /** Where an online player currently is. */

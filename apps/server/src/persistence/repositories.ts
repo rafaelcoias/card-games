@@ -1,10 +1,18 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { GameRanking } from '@cardroom/game-core';
-import { emptyStats, placementOutcome } from '@cardroom/shared';
+import type { GameStanding } from '@cardroom/game-core';
+import { emptyStats, legacyOutcome, placementOutcome, type MatchHistoryPlayer } from '@cardroom/shared';
 import { FieldValue, Timestamp, type DocumentSnapshot, type Firestore } from 'firebase-admin/firestore';
 import { FIRESTORE } from '../firebase/firebase';
 import { ActionLog } from './action-log';
-import type { HistoryDoc, MatchDoc, ProfileDoc, ProfileRecord, RoomDoc, RoomStatus } from './models';
+import type {
+  HistoryDoc,
+  HistoryPlayerDoc,
+  MatchDoc,
+  ProfileDoc,
+  ProfileRecord,
+  RoomDoc,
+  RoomStatus,
+} from './models';
 
 const COLLECTIONS = {
   profiles: 'profiles',
@@ -143,13 +151,22 @@ export class RoomsRepository {
   }
 }
 
-export interface MatchHistoryRow {
+export interface MatchHistoryRow extends Omit<MatchHistoryPlayer, 'username'> {
   id: string;
   gameId: string;
   startedAt: Date;
   finishedAt: Date | null;
-  position: number | null;
-  players: { username: string; position: number | null }[];
+  players: MatchHistoryPlayer[];
+}
+
+/** Fills in outcome/score for entries recorded before they were stored. */
+function readPlayer(doc: HistoryPlayerDoc, playerCount: number): MatchHistoryPlayer {
+  return {
+    username: doc.username,
+    position: doc.position,
+    outcome: doc.outcome ?? legacyOutcome(doc.position, playerCount),
+    score: doc.score ?? null,
+  };
 }
 
 @Injectable()
@@ -176,7 +193,7 @@ export class MatchesRepository {
       startedAt: Timestamp.fromDate(match.startedAt),
       finishedAt: null,
       aborted: false,
-      players: match.players.map((p) => ({ ...p, finalPosition: null })),
+      players: match.players.map((p) => ({ ...p, finalPosition: null, outcome: null, score: null })),
       playerIds: match.players.map((p) => p.profileId),
     };
     await this.db.collection(COLLECTIONS.matches).doc(match.id).set(doc);
@@ -197,25 +214,28 @@ export class MatchesRepository {
    * Records the outcome and, atomically, each player's history entry and stat
    * counters (increments, so concurrent matches of the same player never race).
    */
-  async finish(matchId: string, rankings: readonly GameRanking[], aborted: boolean): Promise<void> {
+  async finish(matchId: string, standings: readonly GameStanding[], aborted: boolean): Promise<void> {
     await this.actionLog.flush(matchId);
     const matchRef = this.db.collection(COLLECTIONS.matches).doc(matchId);
     const snapshot = await matchRef.get();
     const match = snapshot.data() as MatchDoc | undefined;
     if (!match) return;
 
-    const positions = new Map(rankings.map((r) => [r.playerId, r.position]));
-    const players = match.players.map((p) => ({ ...p, finalPosition: positions.get(p.profileId) ?? null }));
+    const byPlayer = new Map(standings.map((s) => [s.playerId, s]));
+    const players = match.players.map((p) => {
+      const standing = byPlayer.get(p.profileId);
+      return {
+        ...p,
+        finalPosition: standing?.position ?? null,
+        outcome: standing?.outcome ?? null,
+        score: standing?.score ?? null,
+      };
+    });
     const finishedAt = Timestamp.now();
     const batch = this.db.batch();
     batch.update(matchRef, { players, finishedAt, aborted });
     for (const player of players) {
-      const outcome = placementOutcome({
-        gameId: match.gameId,
-        position: player.finalPosition,
-        playerCount: players.length,
-        aborted,
-      });
+      const outcome = placementOutcome({ gameId: match.gameId, outcome: player.outcome, aborted });
       if (outcome) {
         const inc = (value: number) => FieldValue.increment(value);
         batch.set(
@@ -243,8 +263,15 @@ export class MatchesRepository {
         startedAt: match.startedAt,
         finishedAt,
         position: player.finalPosition,
+        outcome: player.outcome,
+        score: player.score,
         aborted,
-        players: players.map((p) => ({ username: p.username, position: p.finalPosition })),
+        players: players.map((p) => ({
+          username: p.username,
+          position: p.finalPosition,
+          outcome: p.outcome,
+          score: p.score,
+        })),
       };
       batch.set(
         this.db
@@ -268,13 +295,20 @@ export class MatchesRepository {
       .get();
     return snapshot.docs.map((doc) => {
       const data = doc.data() as HistoryDoc;
+      const count = data.players.length;
+      const self = readPlayer(
+        { username: '', position: data.position, outcome: data.outcome, score: data.score },
+        count,
+      );
       return {
         id: data.matchId,
         gameId: data.gameId,
         startedAt: data.startedAt.toDate(),
         finishedAt: data.finishedAt.toDate(),
-        position: data.position,
-        players: data.players,
+        position: self.position,
+        outcome: self.outcome,
+        score: self.score,
+        players: data.players.map((p) => readPlayer(p, count)),
       };
     });
   }

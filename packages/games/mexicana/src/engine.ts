@@ -1,5 +1,6 @@
 import {
   createDeck,
+  losersOf,
   fail,
   ok,
   pickOne,
@@ -89,10 +90,8 @@ export function setup(
 
 /** Random in the first match of a room; afterwards whoever lost the previous one (rules §3). */
 function pickStartingPlayer(players: readonly PlayerId[], rng: Rng, options: SetupOptions): PlayerId {
-  const rankings = options.previousResult?.rankings ?? [];
-  const loser = [...rankings].sort((a, b) => b.position - a.position)[0];
-  if (loser && players.includes(loser.playerId)) return loser.playerId;
-  return pickOne(players, rng);
+  const loser = losersOf(options.previousResult).find((id) => players.includes(id));
+  return loser ?? pickOne(players, rng);
 }
 
 export function applyAction(state: MexicanaState, action: MexicanaAction, playerId: PlayerId): Result {

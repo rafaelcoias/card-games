@@ -1,4 +1,4 @@
-import type { GameModule, GameResult, PlayerId } from '@cardroom/game-core';
+import { placedStandings, type ConfigField, type GameModule, type GameResult } from '@cardroom/game-core';
 import { z } from 'zod';
 import { applyAction, MAX_PLAYERS, MIN_PLAYERS, setup } from './engine';
 import { getDefaultAction, getPendingPlayers, getValidActions } from './moves';
@@ -21,6 +21,12 @@ export const mexicanaConfigSchema = z.object({
   chooseTimeoutMs: z.number().int().min(10_000).max(120_000).default(30_000),
 });
 
+const TIMER_OPTIONS = [15, 30, 45, 60].map((s) => ({ label: `${s}s`, value: s * 1000 }));
+
+export const mexicanaConfigUi: ConfigField[] = [
+  { key: 'turnTimeoutMs', label: 'Tempo por jogada', options: TIMER_OPTIONS },
+];
+
 const cardIdSchema = z.string().regex(/^(?:(?:10|[2-9JQKA])[SHDC]|JK[12])$/, 'Invalid card id');
 
 /** Actions accepted from clients. `TIMEOUT_PICK_UP` is deliberately absent. */
@@ -34,12 +40,15 @@ export const mexicanaActionSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('PICK_UP_PILE') }),
 ]);
 
+/** Finishing order: first out wins, the last one left loses, everyone else is placed. */
 function getResult(state: MexicanaState): GameResult {
-  const rankings = state.turnOrder
-    .map((playerId) => ({ playerId, position: state.players[playerId]?.finishedPosition ?? null }))
-    .filter((r): r is { playerId: PlayerId; position: number } => r.position !== null)
-    .sort((a, b) => a.position - b.position);
-  return { rankings };
+  const finished = state.turnOrder
+    .filter((playerId) => state.players[playerId]?.finishedPosition != null)
+    .sort(
+      (a, b) =>
+        (state.players[a]?.finishedPosition as number) - (state.players[b]?.finishedPosition as number),
+    );
+  return { standings: placedStandings(finished) };
 }
 
 export type MexicanaModule = GameModule<
@@ -58,6 +67,7 @@ export function createMexicanaModule(rules: MexicanaRules = DEFAULT_RULES): Mexi
     minPlayers: MIN_PLAYERS,
     maxPlayers: MAX_PLAYERS,
     configSchema: mexicanaConfigSchema,
+    configUi: mexicanaConfigUi,
     actionSchema: mexicanaActionSchema,
     setup: (players, config, rng, options) => setup(players, config, rng, options, rules),
     applyAction,

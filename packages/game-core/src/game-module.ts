@@ -3,6 +3,12 @@ import type { Rng } from './rng';
 
 export type PlayerId = string;
 
+/**
+ * Actor id of actions the server applies on its own (scheduled system actions).
+ * Engines must reject system actions from anyone else, and player actions from it.
+ */
+export const SYSTEM_PLAYER_ID = '__system__';
+
 export interface GameError {
   readonly code: string;
   readonly message: string;
@@ -17,23 +23,61 @@ export interface DomainEvent {
   readonly type: string;
 }
 
+/**
+ * A system action the engine asks the server to apply (as `SYSTEM_PLAYER_ID`)
+ * after a delay — e.g. pausing to show who took a trick. Engines stay pure: the
+ * server owns the clock. A schedule is tied to the state it was produced from,
+ * so any other action applied in between makes it stale and it is dropped.
+ */
+export interface ScheduledAction {
+  readonly action: unknown;
+  readonly delayMs: number;
+}
+
 export type ActionResult<State, Event extends DomainEvent = DomainEvent> =
-  | { readonly ok: true; readonly state: State; readonly events: readonly Event[] }
+  | {
+      readonly ok: true;
+      readonly state: State;
+      readonly events: readonly Event[];
+      readonly schedule?: readonly ScheduledAction[];
+    }
   | { readonly ok: false; readonly error: GameError };
 
-export interface GameRanking {
+/**
+ * How a match ended for one player. Games with finishing positions use
+ * WINNER / PLACED / LOSER; games without winners (e.g. Fodinha) use SURVIVOR / LOSER.
+ */
+export type Outcome = 'WINNER' | 'LOSER' | 'SURVIVOR' | 'PLACED';
+
+export interface GameStanding {
   readonly playerId: PlayerId;
-  /** 1 is best. */
-  readonly position: number;
+  readonly outcome: Outcome;
+  /** 1 is best (games with finishing positions only). */
+  readonly position?: number;
+  /** Final score, for games that keep one (e.g. penalty points). */
+  readonly score?: number;
 }
 
 export interface GameResult {
-  readonly rankings: readonly GameRanking[];
+  /** One entry per player, in display order (best first). */
+  readonly standings: readonly GameStanding[];
+  /** Game-specific extras, for display only. */
+  readonly summary?: Record<string, unknown>;
 }
 
 export interface SetupOptions {
   /** Result of the previous match played in the same room, if any. */
   readonly previousResult?: GameResult | null;
+}
+
+export type ConfigValue = string | number | boolean;
+
+/** One room setting, described so the lobby can render it without game-specific code. */
+export interface ConfigField {
+  readonly key: string;
+  readonly label: string;
+  readonly help?: string;
+  readonly options: readonly { readonly label: string; readonly value: ConfigValue }[];
 }
 
 /**
@@ -51,9 +95,16 @@ export interface GameModule<State, Action, Config, View = unknown, Event extends
   readonly maxPlayers: number;
   /** Validates/normalises room configuration (defaults applied). */
   readonly configSchema: z.ZodType<Config>;
+  /** Room settings shown when creating a room; defaults come from `configSchema`. */
+  readonly configUi: readonly ConfigField[];
   /** Validates actions coming from clients. Server-only actions must not pass it. */
   readonly actionSchema: z.ZodType<Action>;
 
+  /**
+   * Checks a configuration against a table size, for rules that tie both together
+   * (e.g. enough cards for everyone). `null` means valid. Optional.
+   */
+  validateTable?(config: Config, playerCount: number): GameError | null;
   setup(players: readonly PlayerId[], config: Config, rng: Rng, options?: SetupOptions): State;
   applyAction(state: State, action: Action, playerId: PlayerId): ActionResult<State, Event>;
   getPlayerView(state: State, playerId: PlayerId): View;

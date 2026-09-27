@@ -1,3 +1,4 @@
+import { outcomeForPosition, type Outcome } from '@cardroom/game-core';
 import type { GameStats, PlayerStats } from './models';
 
 export function emptyStats(): PlayerStats {
@@ -6,15 +7,19 @@ export function emptyStats(): PlayerStats {
 
 export interface FinishedPlacement {
   gameId: string;
-  position: number | null;
-  playerCount: number;
+  outcome: Outcome | null;
   aborted: boolean;
 }
 
 /** Outcome of one match for one player, as counter increments. */
 export function placementOutcome(p: FinishedPlacement): GameStats | null {
-  if (p.aborted || p.position === null) return null;
-  return { played: 1, wins: p.position === 1 ? 1 : 0, losses: p.position === p.playerCount ? 1 : 0 };
+  if (p.aborted || p.outcome === null) return null;
+  return { played: 1, wins: p.outcome === 'WINNER' ? 1 : 0, losses: p.outcome === 'LOSER' ? 1 : 0 };
+}
+
+/** Outcome of records written before outcomes were stored (only positions existed then). */
+export function legacyOutcome(position: number | null, playerCount: number): Outcome | null {
+  return position === null ? null : outcomeForPosition(position, playerCount);
 }
 
 /** Folds a player's finished matches into stats (used to backfill counters). */

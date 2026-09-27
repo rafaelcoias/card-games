@@ -4,6 +4,15 @@ import { OnlineCount } from '@/components/marketing/online-count';
 import { Logo } from '@/components/ui/logo';
 import { getServerSession } from '@/lib/auth/session';
 
+const FODINHA = [
+  { rank: '1–5', text: 'Rondas de 1 a 5 cartas, a subir e a descer' },
+  { rank: '?', text: 'Aposta quantas vazas vais fazer' },
+  { rank: '✗', text: 'Falhaste a aposta? Levas os pontos da ronda' },
+  { rank: '🙈', text: 'Rondas de 1 carta: vês as dos outros, não a tua' },
+  { rank: 'A♦', text: 'A carta mais forte do baralho' },
+  { rank: '=', text: 'Empate na carta mais alta: ninguém ganha a vaza' },
+];
+
 const POWERS = [
   { rank: '2', text: 'Reinicia a pilha' },
   { rank: '3', text: 'Espelha a carta de baixo' },
@@ -37,7 +46,7 @@ export default async function HomePage() {
         <section className="mx-auto grid max-w-6xl items-center gap-10 px-4 pb-16 pt-8 sm:px-6 md:grid-cols-2 md:pt-16">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-gold">
-              Mexicana · online · com amigos
+              Mexicana · Fodinha · online · com amigos
             </p>
             <h1 className="mt-4 font-display text-5xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
               A mesa está posta.
@@ -88,6 +97,25 @@ export default async function HomePage() {
               ))}
             </ul>
             <p className="mt-6 text-sm text-subtle">Quatro cartas iguais seguidas também queimam a pilha.</p>
+
+            <h2 className="mt-16 font-display text-3xl font-semibold tracking-tight">
+              Fodinha em 30 segundos
+            </h2>
+            <p className="mt-3 max-w-2xl text-muted">
+              Em cada ronda, cada jogador aposta quantas vazas vai ganhar. Ganha a vaza a carta mais alta — os
+              naipes não contam. Quem não acertar exatamente na aposta leva os pontos da ronda; se ninguém
+              falhar, a ronda seguinte vale mais. Não há vencedores: perde quem chegar aos 5 pontos.
+            </p>
+            <ul className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {FODINHA.map((p) => (
+                <li key={p.text} className="panel flex items-center gap-4 p-4">
+                  <span className="inline-flex h-14 w-10 shrink-0 items-center justify-center rounded-md bg-ivory font-display text-base font-bold text-[#1a1a1a] shadow">
+                    {p.rank}
+                  </span>
+                  <span className="text-ivory/90">{p.text}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
       </main>

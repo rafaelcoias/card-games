@@ -1,5 +1,5 @@
 import { winRate, type PlayerStats } from '@cardroom/shared';
-import { GAME_CLIENTS } from '@/games/registry';
+import { findGameClient as game } from '@/games/registry';
 
 /** Headline numbers plus a per-game breakdown. */
 export function StatsSummary({ stats }: { stats: PlayerStats }) {
@@ -19,11 +19,11 @@ export function StatsSummary({ stats }: { stats: PlayerStats }) {
         <ul className="panel divide-y divide-line px-5" aria-label="Por jogo">
           {games.map(([gameId, s]) => (
             <li key={gameId} className="flex items-center gap-3 py-2.5 text-sm">
-              <span className="flex-1 font-medium">
-                {GAME_CLIENTS.find((g) => g.id === gameId)?.name ?? gameId}
-              </span>
+              <span className="flex-1 font-medium">{game(gameId)?.name ?? gameId}</span>
               <span className="tabular-nums text-muted">
-                {s.played} partidas · {s.wins} V · {s.losses} D · {winRate(s)}%
+                {game(gameId)?.resultStyle === 'survival'
+                  ? `${s.played} partidas · ${s.played - s.losses} sobreviveu · ${s.losses} perdeu`
+                  : `${s.played} partidas · ${s.wins} V · ${s.losses} D · ${winRate(s)}%`}
               </span>
             </li>
           ))}

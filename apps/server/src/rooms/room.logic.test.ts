@@ -10,6 +10,7 @@ import {
   purgeLeftMembers,
   removeMember,
   toRoomState,
+  upgradeRoom,
 } from './room.logic';
 import type { RoomRecord, SessionRecord } from './room.model';
 
@@ -153,5 +154,42 @@ describe('projection', () => {
     const state = toRoomState(r, 'Mexicana');
     expect(state).toMatchObject({ gameName: 'Mexicana', matchId: null, code: 'ABCDEF' });
     expect(Object.keys(state.players[0]!)).not.toContain('disconnectedAt');
+  });
+});
+
+describe('upgradeRoom', () => {
+  it('turns legacy rankings into standings with outcomes', () => {
+    const legacy = room({
+      lastResult: {
+        matchId: 'm1',
+        aborted: false,
+        rankings: [
+          { playerId: 'a', username: 'A', position: 1 },
+          { playerId: 'b', username: 'B', position: 2 },
+          { playerId: 'c', username: 'C', position: 3 },
+        ],
+      } as unknown as RoomRecord['lastResult'],
+    });
+    expect(upgradeRoom(legacy).lastResult).toEqual({
+      matchId: 'm1',
+      aborted: false,
+      standings: [
+        { playerId: 'a', username: 'A', position: 1, outcome: 'WINNER' },
+        { playerId: 'b', username: 'B', position: 2, outcome: 'PLACED' },
+        { playerId: 'c', username: 'C', position: 3, outcome: 'LOSER' },
+      ],
+    });
+  });
+
+  it('leaves current rooms untouched', () => {
+    const current = room({
+      lastResult: {
+        matchId: 'm2',
+        aborted: false,
+        standings: [{ playerId: 'a', username: 'A', outcome: 'SURVIVOR', score: 2 }],
+      },
+    });
+    expect(upgradeRoom(structuredClone(current))).toEqual(current);
+    expect(upgradeRoom(room()).lastResult).toBeNull();
   });
 });

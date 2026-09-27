@@ -1,3 +1,4 @@
+import { fodinha } from '@cardroom/fodinha';
 import { GameRegistry } from '@cardroom/game-core';
 import { highCard } from '@cardroom/high-card';
 import { mexicana } from '@cardroom/mexicana';
@@ -7,5 +8,5 @@ import { mexicana } from '@cardroom/mexicana';
  * Adding a game = adding a package and one `register` call.
  */
 export function createGameRegistry(): GameRegistry {
-  return new GameRegistry().register(mexicana).register(highCard);
+  return new GameRegistry().register(mexicana).register(fodinha).register(highCard);
 }

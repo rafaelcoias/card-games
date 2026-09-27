@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
-import type { AnyGameModule, GameRegistry } from '@cardroom/game-core';
+import {
+  SYSTEM_PLAYER_ID,
+  type AnyGameModule,
+  type GameRegistry,
+  type ScheduledAction,
+} from '@cardroom/game-core';
 import { createDrbgRng, generateSeed } from '@cardroom/game-core/node';
 import { ErrorCode, type MatchResult } from '@cardroom/shared';
 import { AppError } from '../common/app-error';
@@ -14,6 +19,9 @@ import { RoomStore } from '../rooms/room.store';
 import { TimerScheduler, type TimerJob } from '../scheduler/timer.scheduler';
 import { RoomPublisher } from './room-publisher';
 import { decideTimerReset, decisionWindowMs } from './timer-policy';
+
+/** A system action that finds its room locked is retried this soon: losing it would freeze the table. */
+const SYSTEM_RETRY_MS = 250;
 
 /**
  * Owns the lifecycle of matches: start, authoritative action processing,
@@ -36,15 +44,18 @@ export class GameSessionsService implements OnModuleInit {
 
   onModuleInit(): void {
     this.scheduler.register('turn', (job) => this.onTurnTimer(job));
+    this.scheduler.register('system', (job) => this.onSystemTimer(job));
   }
 
   start(room: RoomRecord, effects: Effects): void {
     const module = this.registry.require(room.gameId);
     const config = module.configSchema.parse(room.config) as Record<string, unknown>;
     const players = [...room.members].sort((a, b) => a.seat - b.seat).map((m) => m.id);
+    const tableError = module.validateTable?.(config, players.length);
+    if (tableError) throw new AppError(tableError.code, tableError.message);
     const seed = generateSeed();
     const state = module.setup(players, config, createDrbgRng(seed), {
-      previousResult: room.lastResult ? { rankings: room.lastResult.rankings } : null,
+      previousResult: room.lastResult ? { standings: room.lastResult.standings } : null,
     });
 
     const session: SessionRecord = {
@@ -145,7 +156,50 @@ export class GameSessionsService implements OnModuleInit {
     if (decideTimerReset(module, before, result.state, actor).reset) {
       this.armTimer(room, module, effects);
     }
+    this.scheduleSystemActions(room, session, result.schedule ?? [], effects);
     this.deferViews(room, effects);
+  }
+
+  /**
+   * Queues the engine's follow-up actions (pauses between tricks, rounds…) in the
+   * Redis scheduler, so they survive restarts. Each one is bound to the current
+   * `seq`: if anything else is applied first, it is stale and gets dropped.
+   */
+  private scheduleSystemActions(
+    room: RoomRecord,
+    session: SessionRecord,
+    schedule: readonly ScheduledAction[],
+    effects: Effects,
+  ): void {
+    schedule.forEach(({ action, delayMs }, index) => {
+      const job: TimerJob = {
+        kind: 'system',
+        roomId: room.id,
+        token: `${session.matchId}:${session.seq}:${index}`,
+        payload: action,
+      };
+      const dueAt = Date.now() + delayMs;
+      effects.defer(() => this.scheduler.schedule(job, dueAt));
+    });
+  }
+
+  private async onSystemTimer(job: TimerJob): Promise<void> {
+    const [matchId, seq] = job.token.split(':');
+    try {
+      await this.store.mutate(job.roomId, (room, effects) => {
+        const session = room.session;
+        if (!session || session.matchId !== matchId || String(session.seq) !== seq) return;
+        const module = this.registry.require(session.gameId);
+        this.apply(room, module, job.payload, SYSTEM_PLAYER_ID, true, effects);
+      });
+    } catch (error) {
+      if (error instanceof AppError && error.code === ErrorCode.RoomNotFound) return;
+      if (error instanceof AppError && error.code === ErrorCode.Busy) {
+        await this.scheduler.schedule(job, Date.now() + SYSTEM_RETRY_MS);
+        return;
+      }
+      throw error;
+    }
   }
 
   /** Views go out once per unit of work, after all events, reflecting the final state. */
@@ -212,12 +266,12 @@ export class GameSessionsService implements OnModuleInit {
   private finish(room: RoomRecord, effects: Effects, aborted: boolean): void {
     const session = this.requireSession(room);
     const module = this.registry.require(session.gameId);
-    const rankings = aborted ? [] : [...module.getResult(session.state).rankings];
+    const standings = aborted ? [] : [...module.getResult(session.state).standings];
     const names = new Map(room.members.map((m) => [m.id, m.username]));
     const result: MatchResult = {
       matchId: session.matchId,
       aborted,
-      rankings: rankings.map((r) => ({ ...r, username: names.get(r.playerId) ?? '—' })),
+      standings: standings.map((s) => ({ ...s, username: names.get(s.playerId) ?? '—' })),
     };
 
     // Players receive the final view before the room returns to the lobby.
@@ -230,7 +284,7 @@ export class GameSessionsService implements OnModuleInit {
     for (const member of room.members) member.ready = false;
     if (room.members.length === 0) room.status = 'CLOSED';
 
-    effects.defer(() => this.matches.finish(session.matchId, rankings, aborted));
+    effects.defer(() => this.matches.finish(session.matchId, standings, aborted));
     effects.defer(() => this.rooms.setStatus(room.id, room.status));
     effects.defer(() => this.publisher.publishFinished(finishedRoom, result));
     effects.defer(() => this.publisher.publishRoom(room));

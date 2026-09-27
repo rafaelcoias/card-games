@@ -1,44 +1,57 @@
+import { fodinha } from '@cardroom/fodinha';
+import type { ConfigValue } from '@cardroom/game-core';
+import { highCard } from '@cardroom/high-card';
+import { mexicana } from '@cardroom/mexicana';
+import { FodinhaTable } from './fodinha/table';
 import { HighCardTable } from './high-card/table';
 import { MexicanaTable } from './mexicana/table';
-import type { GameClientDefinition } from './types';
+import type { GameClientDefinition, GameRules } from './types';
 
-const TIMER_OPTIONS = [15, 30, 45, 60].map((s) => ({ label: `${s}s`, value: s * 1000 }));
+type Presentation = Pick<
+  GameClientDefinition,
+  'tagline' | 'defaultMaxPlayers' | 'resultStyle' | 'resultDelayMs' | 'Table'
+>;
+
+/** Rules, player counts and settings come from the game's own module; the client adds the looks. */
+function define(rules: GameRules, presentation: Presentation): GameClientDefinition {
+  return {
+    id: rules.id,
+    name: rules.name,
+    minPlayers: rules.minPlayers,
+    maxPlayers: rules.maxPlayers,
+    settings: rules.configUi,
+    defaults: rules.configSchema.parse({}) as Record<string, ConfigValue>,
+    validateTable: (config, playerCount) => rules.validateTable?.(config as never, playerCount) ?? null,
+    ...presentation,
+  };
+}
 
 /**
  * Client-side game catalogue. The platform UI (lobby, rooms) is generic; each
- * entry only contributes its table and settings.
+ * entry only contributes its table and presentation.
  */
 export const GAME_CLIENTS: GameClientDefinition[] = [
-  {
-    id: 'mexicana',
-    name: 'Mexicana',
+  define(mexicana, {
     tagline: 'Livra-te de todas as cartas — sem ficar em último.',
-    minPlayers: 2,
-    maxPlayers: 6,
     defaultMaxPlayers: 4,
-    settings: [
-      { key: 'turnTimeoutMs', label: 'Tempo por jogada', options: TIMER_OPTIONS, defaultValue: 30_000 },
-    ],
+    resultStyle: 'placement',
+    resultDelayMs: 0,
     Table: MexicanaTable,
-  },
-  {
-    id: 'high-card',
-    name: 'Carta Mais Alta',
+  }),
+  define(fodinha, {
+    tagline: 'Aposta quantas vazas fazes. Quem falha leva pontos — e quem chega ao limite perde.',
+    defaultMaxPlayers: 5,
+    resultStyle: 'survival',
+    resultDelayMs: 2600,
+    Table: FodinhaTable,
+  }),
+  define(highCard, {
     tagline: 'Um aquecimento rápido: a carta mais alta ganha a ronda.',
-    minPlayers: 2,
-    maxPlayers: 6,
     defaultMaxPlayers: 4,
-    settings: [
-      {
-        key: 'rounds',
-        label: 'Rondas',
-        options: [3, 5, 7].map((n) => ({ label: `${n}`, value: n })),
-        defaultValue: 5,
-      },
-      { key: 'turnTimeoutMs', label: 'Tempo por ronda', options: TIMER_OPTIONS, defaultValue: 30_000 },
-    ],
+    resultStyle: 'placement',
+    resultDelayMs: 0,
     Table: HighCardTable,
-  },
+  }),
 ];
 
 export function findGameClient(id: string): GameClientDefinition | undefined {

@@ -84,7 +84,7 @@ describe(`simulation of ${GAMES} random games`, () => {
       const { state } = simulate(`game-${i}`);
       if (i % 25 === 0) await new Promise((resolve) => setImmediate(resolve));
       const result = mexicana.getResult(state);
-      expect(result.rankings.map((r) => r.position)).toEqual(state.turnOrder.map((_, idx) => idx + 1));
+      expect(result.standings.map((r) => r.position)).toEqual(state.turnOrder.map((_, idx) => idx + 1));
     }
   });
 });

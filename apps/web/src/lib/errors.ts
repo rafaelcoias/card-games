@@ -29,6 +29,13 @@ const MESSAGES: Record<string, string> = {
   MUST_PLAY_FACE_DOWN: 'Só te restam cartas escondidas.',
   ALREADY_CHOSEN: 'Já escolheste as tuas cartas visíveis.',
   WRONG_PHASE: 'Ação indisponível neste momento.',
+  // Fodinha engine
+  ALREADY_BID: 'A tua aposta já está fechada.',
+  INVALID_BID: 'Essa aposta não é possível nesta ronda.',
+  FORBIDDEN_BID: 'O último a apostar não pode fazer a soma das apostas igual ao número de vazas.',
+  INVALID_CARD: 'Essa carta não está na tua mão.',
+  BLIND_ROUND: 'Na ronda às cegas as cartas são jogadas automaticamente.',
+  TOO_MANY_CARDS: 'Não há cartas que cheguem para tantos jogadores com essa mão máxima.',
 };
 
 export function describeError(error: ErrorPayload): string {

@@ -6,6 +6,7 @@ import type Redis from 'ioredis';
 import { AppError } from '../common/app-error';
 import { REDIS } from '../redis/redis.module';
 import { Effects } from './effects';
+import { upgradeRoom } from './room.logic';
 import type { RoomRecord } from './room.model';
 
 const ROOM_TTL_SECONDS = 60 * 60 * 24;
@@ -88,7 +89,7 @@ export class RoomStore {
 
   async load(roomId: string): Promise<RoomRecord | null> {
     const raw = await this.redis.get(keys.room(roomId));
-    return raw ? (JSON.parse(raw) as RoomRecord) : null;
+    return raw ? upgradeRoom(JSON.parse(raw) as RoomRecord) : null;
   }
 
   async save(room: RoomRecord): Promise<void> {
@@ -126,7 +127,7 @@ export class RoomStore {
     const rooms: RoomRecord[] = [];
     const stale: string[] = [];
     raws.forEach((raw, i) =>
-      raw ? rooms.push(JSON.parse(raw) as RoomRecord) : stale.push(ids[i] as string),
+      raw ? rooms.push(upgradeRoom(JSON.parse(raw) as RoomRecord)) : stale.push(ids[i] as string),
     );
     if (stale.length > 0) await this.redis.zrem(keys.openRooms, ...stale);
     return rooms;

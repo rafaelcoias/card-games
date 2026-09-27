@@ -4,7 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { deleteApp, type App } from 'firebase-admin/app';
-import type { Firestore } from 'firebase-admin/firestore';
+import { Timestamp, type Firestore } from 'firebase-admin/firestore';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadEnv } from '../src/config/env';
 import { createFirebaseApp, createFirestore } from '../src/firebase/firebase';
@@ -128,8 +128,8 @@ describe('MatchesRepository', () => {
     await matches.finish(
       matchId,
       [
-        { playerId: p2, position: 1 },
-        { playerId: p1, position: 2 },
+        { playerId: p2, position: 1, outcome: 'WINNER' },
+        { playerId: p1, position: 2, outcome: 'LOSER' },
       ],
       false,
     );
@@ -143,16 +143,16 @@ describe('MatchesRepository', () => {
 
     const match = (await db.collection('matches').doc(matchId).get()).data();
     expect(match?.players).toEqual([
-      { profileId: p1, username: 'ana', seat: 0, finalPosition: 2 },
-      { profileId: p2, username: 'rui', seat: 1, finalPosition: 1 },
+      { profileId: p1, username: 'ana', seat: 0, finalPosition: 2, outcome: 'LOSER', score: null },
+      { profileId: p2, username: 'rui', seat: 1, finalPosition: 1, outcome: 'WINNER', score: null },
     ]);
 
     const history = await matches.historyFor(p2, 10);
     expect(history).toHaveLength(1);
-    expect(history[0]).toMatchObject({ id: matchId, gameId: 'mexicana', position: 1 });
+    expect(history[0]).toMatchObject({ id: matchId, gameId: 'mexicana', position: 1, outcome: 'WINNER' });
     expect(history[0]?.players).toEqual([
-      { username: 'ana', position: 2 },
-      { username: 'rui', position: 1 },
+      { username: 'ana', position: 2, outcome: 'LOSER', score: null },
+      { username: 'rui', position: 1, outcome: 'WINNER', score: null },
     ]);
     expect((await db.collection('rooms').doc(roomId).get()).get('status')).toBe('OPEN');
 
@@ -164,5 +164,69 @@ describe('MatchesRepository', () => {
       byGame: { mexicana: { played: 1, wins: 1, losses: 0 } },
     });
     expect((await profiles.find(p1))?.stats).toMatchObject({ played: 1, wins: 0, losses: 1 });
+  });
+
+  it('records Fodinha outcomes and scores, and reads history written before outcomes existed', async () => {
+    const matchId = randomUUID();
+    const [p1, p2, p3] = [randomUUID(), randomUUID(), randomUUID()];
+    for (const [id, name] of [
+      [p1, 'eva'],
+      [p2, 'rui'],
+      [p3, 'ze'],
+    ] as const) {
+      await profiles.upsert(id, { username: unique(name), avatarUrl: null });
+    }
+    await matches.create({
+      id: matchId,
+      roomId: randomUUID(),
+      gameId: 'fodinha',
+      seed: 'cd'.repeat(32),
+      config: { maxPoints: 5 },
+      startedAt: new Date(),
+      players: [
+        { profileId: p1, username: 'eva', seat: 0 },
+        { profileId: p2, username: 'rui', seat: 1 },
+        { profileId: p3, username: 'ze', seat: 2 },
+      ],
+    });
+    await matches.finish(
+      matchId,
+      [
+        { playerId: p2, outcome: 'SURVIVOR', score: 1 },
+        { playerId: p3, outcome: 'SURVIVOR', score: 3 },
+        { playerId: p1, outcome: 'LOSER', score: 5 },
+      ],
+      false,
+    );
+
+    const [entry] = await matches.historyFor(p1, 10);
+    expect(entry).toMatchObject({ gameId: 'fodinha', position: null, outcome: 'LOSER', score: 5 });
+    expect(entry?.players).toContainEqual({ username: 'rui', position: null, outcome: 'SURVIVOR', score: 1 });
+    // Survivors neither win nor lose; reaching the limit is a loss.
+    expect((await profiles.find(p1))?.stats.byGame.fodinha).toEqual({ played: 1, wins: 0, losses: 1 });
+    expect((await profiles.find(p2))?.stats.byGame.fodinha).toEqual({ played: 1, wins: 0, losses: 0 });
+
+    // A history entry from before outcomes were stored: derived from positions.
+    await db
+      .collection('profiles')
+      .doc(p2)
+      .collection('history')
+      .doc('legacy')
+      .set({
+        matchId: 'legacy',
+        gameId: 'mexicana',
+        startedAt: Timestamp.fromDate(new Date(0)),
+        finishedAt: Timestamp.fromDate(new Date(1000)),
+        position: 3,
+        aborted: false,
+        players: [
+          { username: 'a', position: 1 },
+          { username: 'b', position: 2 },
+          { username: 'rui', position: 3 },
+        ],
+      });
+    const legacy = (await matches.historyFor(p2, 10)).find((m) => m.id === 'legacy');
+    expect(legacy).toMatchObject({ position: 3, outcome: 'LOSER', score: null });
+    expect(legacy?.players.map((p) => p.outcome)).toEqual(['WINNER', 'PLACED', 'LOSER']);
   });
 });

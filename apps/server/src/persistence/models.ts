@@ -11,6 +11,7 @@
  *
  * Live room/match state is NOT here: it lives in Redis while a table is active.
  */
+import type { Outcome } from '@cardroom/game-core';
 import type { PlayerStats } from '@cardroom/shared';
 import type { Timestamp } from 'firebase-admin/firestore';
 
@@ -49,6 +50,9 @@ export interface MatchPlayerDoc {
   username: string;
   seat: number;
   finalPosition: number | null;
+  /** Absent on matches recorded before outcomes existed (derive from `finalPosition`). */
+  outcome?: Outcome | null;
+  score?: number | null;
 }
 
 export interface MatchDoc {
@@ -71,12 +75,22 @@ export interface ActionDoc {
   at: Timestamp;
 }
 
+export interface HistoryPlayerDoc {
+  username: string;
+  position: number | null;
+  /** Absent on entries written before outcomes existed (derive from `position`). */
+  outcome?: Outcome | null;
+  score?: number | null;
+}
+
 export interface HistoryDoc {
   matchId: string;
   gameId: string;
   startedAt: Timestamp;
   finishedAt: Timestamp;
   position: number | null;
+  outcome?: Outcome | null;
+  score?: number | null;
   aborted: boolean;
-  players: { username: string; position: number | null }[];
+  players: HistoryPlayerDoc[];
 }

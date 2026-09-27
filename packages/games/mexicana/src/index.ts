@@ -3,6 +3,7 @@ export {
   mexicana,
   mexicanaActionSchema,
   mexicanaConfigSchema,
+  mexicanaConfigUi,
   MEXICANA_ID,
 } from './module';
 export type { MexicanaModule } from './module';

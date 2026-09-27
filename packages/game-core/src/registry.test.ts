@@ -13,6 +13,7 @@ const counterGame: GameModule<CounterState, CounterAction, Record<string, never>
   minPlayers: 1,
   maxPlayers: 2,
   configSchema: z.object({}).strict(),
+  configUi: [],
   actionSchema: z.object({ type: z.literal('INC') }),
   setup: () => ({ value: 0 }),
   applyAction: (state, _action, playerId) =>
@@ -25,7 +26,7 @@ const counterGame: GameModule<CounterState, CounterAction, Record<string, never>
   getPendingPlayers: () => [],
   getTimeoutMs: () => null,
   isFinished: (state) => state.value >= 3,
-  getResult: () => ({ rankings: [] }),
+  getResult: () => ({ standings: [] }),
 };
 
 describe('GameRegistry', () => {
@@ -51,6 +52,18 @@ describe('GameRegistry', () => {
     expect(module.applyAction(state, { type: 'INC' }, 'bad')).toEqual({
       ok: false,
       error: { code: 'FORBIDDEN', message: 'nope' },
+    });
+  });
+});
+
+describe('ok()', () => {
+  it('only carries a schedule when there is something to schedule', () => {
+    expect(ok({ value: 1 }, [], [])).toEqual({ ok: true, state: { value: 1 }, events: [] });
+    expect(ok({ value: 1 }, [], [{ action: { type: 'TICK' }, delayMs: 500 }])).toEqual({
+      ok: true,
+      state: { value: 1 },
+      events: [],
+      schedule: [{ action: { type: 'TICK' }, delayMs: 500 }],
     });
   });
 });

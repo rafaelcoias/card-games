@@ -8,13 +8,16 @@ import {
 import type Redis from 'ioredis';
 import { REDIS } from '../redis/redis.module';
 
-export type TimerKind = 'turn' | 'grace';
+/** `turn`: decision deadline · `grace`: reconnect window · `system`: engine-scheduled action. */
+export type TimerKind = 'turn' | 'grace' | 'system';
 
 export interface TimerJob {
   kind: TimerKind;
   roomId: string;
   /** Opaque value the handler uses to detect stale jobs. */
   token: string;
+  /** Job data (e.g. the system action to apply). */
+  payload?: unknown;
 }
 
 type Handler = (job: TimerJob) => Promise<void>;

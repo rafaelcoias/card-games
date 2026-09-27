@@ -4,8 +4,10 @@ import {
   createRankComparator,
   fail,
   ok,
+  placedStandings,
   shuffle,
   type Card,
+  type ConfigField,
   type GameModule,
   type GameResult,
   type PlayerId,
@@ -57,8 +59,15 @@ export interface HighCardView {
 
 export const highCardConfigSchema = z.object({
   rounds: z.number().int().min(1).max(8).default(5),
-  turnTimeoutMs: z.number().int().min(5_000).max(120_000).default(20_000),
+  turnTimeoutMs: z.number().int().min(5_000).max(120_000).default(30_000),
 });
+
+const TIMER_OPTIONS = [15, 30, 45, 60].map((s) => ({ label: `${s}s`, value: s * 1000 }));
+
+export const highCardConfigUi: ConfigField[] = [
+  { key: 'rounds', label: 'Rondas', options: [3, 5, 7].map((n) => ({ label: `${n}`, value: n })) },
+  { key: 'turnTimeoutMs', label: 'Tempo por ronda', options: TIMER_OPTIONS },
+];
 
 const actionSchema = z.strictObject({ type: z.literal('PLAY_CARD'), cardId: z.string().min(2).max(3) });
 
@@ -79,7 +88,7 @@ function resolveRound(state: HighCardState): RoundOutcome {
 
 function getResult(state: HighCardState): GameResult {
   const ordered = [...state.players].sort((a, b) => (state.scores[b] ?? 0) - (state.scores[a] ?? 0));
-  return { rankings: ordered.map((playerId, index) => ({ playerId, position: index + 1 })) };
+  return { standings: placedStandings(ordered) };
 }
 
 function pending(state: HighCardState): PlayerId[] {
@@ -116,6 +125,7 @@ export const highCard: GameModule<
   minPlayers: 2,
   maxPlayers: 6,
   configSchema: highCardConfigSchema,
+  configUi: highCardConfigUi,
   actionSchema,
 
   setup(players, config, rng) {

@@ -1,4 +1,5 @@
-import { ErrorCode, type ChatMessage, type RoomState } from '@cardroom/shared';
+import { outcomeForPosition } from '@cardroom/game-core';
+import { ErrorCode, type ChatMessage, type MatchResult, type RoomState } from '@cardroom/shared';
 import { AppError } from '../common/app-error';
 import { CHAT_HISTORY, type RoomMember, type RoomRecord } from './room.model';
 
@@ -128,6 +129,29 @@ export function assertCanKick(room: RoomRecord, hostId: string, targetId: string
 
 export function appendChat(room: RoomRecord, message: ChatMessage): void {
   room.chat = [...room.chat, message].slice(-CHAT_HISTORY);
+}
+
+/**
+ * Rooms saved before results carried outcomes hold `rankings` (positions only).
+ * Upgrades them in place when loaded, so a deploy never breaks live rooms.
+ */
+export function upgradeRoom(room: RoomRecord): RoomRecord {
+  const saved: LegacyMatchResult | null = room.lastResult;
+  if (saved && !saved.standings) {
+    const rankings = saved.rankings ?? [];
+    room.lastResult = {
+      matchId: saved.matchId,
+      aborted: saved.aborted,
+      standings: rankings.map((r) => ({ ...r, outcome: outcomeForPosition(r.position, rankings.length) })),
+    };
+  }
+  return room;
+}
+
+/** A `MatchResult` as it may have been saved by an older server. */
+interface LegacyMatchResult extends Omit<MatchResult, 'standings'> {
+  standings?: MatchResult['standings'];
+  rankings?: { playerId: string; username: string; position: number }[];
 }
 
 export function toRoomState(room: RoomRecord, gameName: string): RoomState {

@@ -14,7 +14,7 @@ describe('high-card', () => {
     expect(state.hands.a).toHaveLength(3);
     expect(highCard.getPendingPlayers(state)).toEqual(['a', 'b']);
     expect(highCard.getCurrentPlayer(state)).toBeNull();
-    expect(highCard.getTimeoutMs(state)).toBe(20_000);
+    expect(highCard.getTimeoutMs(state)).toBe(30_000);
   });
 
   it('keeps commitments hidden until the round resolves', () => {
@@ -45,9 +45,10 @@ describe('high-card', () => {
       state = result.state;
     }
     expect(rounds).toBe(3);
-    const { rankings } = highCard.getResult(state);
-    expect(rankings.map((r) => r.position)).toEqual([1, 2, 3]);
-    const scores = rankings.map((r) => state.scores[r.playerId]!);
+    const { standings } = highCard.getResult(state);
+    expect(standings.map((r) => r.position)).toEqual([1, 2, 3]);
+    expect(standings.map((r) => r.outcome)).toEqual(['WINNER', 'PLACED', 'LOSER']);
+    const scores = standings.map((r) => state.scores[r.playerId]!);
     expect([...scores].sort((x, y) => y - x)).toEqual(scores);
     expect(highCard.getTimeoutMs(state)).toBeNull();
     expect(highCard.getDefaultAction(state, 'a')).toBeNull();

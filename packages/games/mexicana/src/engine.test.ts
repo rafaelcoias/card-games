@@ -48,10 +48,10 @@ describe('setup', () => {
 
   it('the loser of the previous match starts', () => {
     const previousResult = {
-      rankings: [
-        { playerId: 'a', position: 1 },
-        { playerId: 'c', position: 3 },
-        { playerId: 'b', position: 2 },
+      standings: [
+        { playerId: 'a', position: 1, outcome: 'WINNER' as const },
+        { playerId: 'b', position: 2, outcome: 'PLACED' as const },
+        { playerId: 'c', position: 3, outcome: 'LOSER' as const },
       ],
     };
     for (const seed of ['1', '2', '3', '4']) {
@@ -61,7 +61,7 @@ describe('setup', () => {
   });
 
   it('falls back to a random starter when the loser left the room', () => {
-    const previousResult = { rankings: [{ playerId: 'gone', position: 2 }] };
+    const previousResult = { standings: [{ playerId: 'gone', position: 2, outcome: 'LOSER' as const }] };
     const starters = new Set(
       ['1', '2', '3', '4', '5', '6', '7', '8'].map((seed) => {
         const s = mexicana.setup(['a', 'b', 'c'], config, createSeededRng(seed), { previousResult });
@@ -261,10 +261,10 @@ describe('finishing', () => {
     expect(s3.state.phase).toBe('FINISHED');
     expect(mexicana.isFinished(s3.state)).toBe(true);
     expect(mexicana.getResult(s3.state)).toEqual({
-      rankings: [
-        { playerId: 'p1', position: 1 },
-        { playerId: 'p3', position: 2 },
-        { playerId: 'p2', position: 3 },
+      standings: [
+        { playerId: 'p1', position: 1, outcome: 'WINNER' },
+        { playerId: 'p3', position: 2, outcome: 'PLACED' },
+        { playerId: 'p2', position: 3, outcome: 'LOSER' },
       ],
     });
     expect(mexicana.getPendingPlayers(s3.state)).toEqual([]);

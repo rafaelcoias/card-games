@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { findGameClient } from '@/games/registry';
+import type { GameClientDefinition } from '@/games/types';
 import { describeError } from '@/lib/errors';
 import { gameFeed } from '@/lib/realtime/game-feed';
 import { useRoomCommands } from '@/lib/realtime/socket-provider';
@@ -60,17 +61,22 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
               {room.isPrivate ? 'Sala privada' : 'Sala pública'}
             </p>
             <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight">{room.gameName}</h1>
-            <p className="mt-1 text-muted">{settingsSummary(room)}</p>
+            <SettingsSummary room={room} game={game} />
           </div>
           <ShareCode code={room.code} />
         </div>
 
-        {room.lastResult && room.lastResult.rankings.length > 0 && (
+        {room.lastResult && room.lastResult.standings.length > 0 && (
           <div className="panel flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3 text-sm">
             <span className="font-semibold text-gold">Última partida</span>
-            {room.lastResult.rankings.map((r) => (
-              <span key={r.playerId} className="text-ivory/85">
-                <span className="tabular-nums text-subtle">{r.position}.º</span> {r.username}
+            {room.lastResult.standings.map((s) => (
+              <span key={s.playerId} className={s.outcome === 'LOSER' ? 'text-danger' : 'text-ivory/85'}>
+                {s.position !== undefined ? (
+                  <span className="tabular-nums text-subtle">{s.position}.º </span>
+                ) : null}
+                {s.username}
+                {s.score !== undefined && <span className="tabular-nums text-subtle"> · {s.score} pts</span>}
+                {s.position === undefined && s.outcome === 'LOSER' && ' · perdeu'}
               </span>
             ))}
           </div>
@@ -222,11 +228,22 @@ function ShareCode({ code }: { code: string }) {
   );
 }
 
-function settingsSummary(room: RoomState): string {
-  const parts = [`Até ${room.maxPlayers} jogadores`];
-  const turn = room.config.turnTimeoutMs;
-  if (typeof turn === 'number') parts.push(`${Math.round(turn / 1000)}s por jogada`);
-  const rounds = room.config.rounds;
-  if (typeof rounds === 'number') parts.push(`${rounds} rondas`);
-  return parts.join(' · ');
+/** The table's rules, read from the game's settings metadata, visible to everyone before starting. */
+function SettingsSummary({ room, game }: { room: RoomState; game: GameClientDefinition | undefined }) {
+  const settings = (game?.settings ?? []).flatMap((field) => {
+    const option = field.options.find((o) => o.value === room.config[field.key]);
+    return option ? [{ key: field.key, label: field.label, value: option.label }] : [];
+  });
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5 text-sm">
+      <span className="rounded-full bg-white/5 px-2.5 py-0.5 text-muted">
+        Até {room.maxPlayers} jogadores
+      </span>
+      {settings.map((s) => (
+        <span key={s.key} className="rounded-full bg-white/5 px-2.5 py-0.5 text-muted">
+          {s.label}: <span className="text-ivory/90">{s.value}</span>
+        </span>
+      ))}
+    </div>
+  );
 }

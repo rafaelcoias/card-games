@@ -1,13 +1,14 @@
 'use client';
 
-import type { MatchResult, RoomState } from '@cardroom/shared';
+import type { MatchResult, PlayerStanding, RoomState } from '@cardroom/shared';
 import { AnchorProvider, FlightLayer } from '@cardroom/ui';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { findGameClient } from '@/games/registry';
+import type { ResultStyle } from '@/games/types';
 import { useSoundPreference } from '@/games/shared/sounds';
 import { describeError } from '@/lib/errors';
 import { gameFeed } from '@/lib/realtime/game-feed';
@@ -31,6 +32,7 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
   const matchOver = result !== null;
   const game = findGameClient(room.gameId);
   const Table = game?.Table;
+  const shownResult = useDelayed(result, game?.resultDelayMs ?? 0);
 
   const leave = async () => {
     setLeaving(true);
@@ -124,7 +126,14 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
         </AnimatePresence>
       </div>
 
-      <ResultsModal result={result} selfId={selfId} onClose={() => useRealtime.getState().setResult(null)} />
+      <ResultsModal
+        result={shownResult}
+        style={game?.resultStyle ?? 'placement'}
+        selfId={selfId}
+        leaving={leaving}
+        onClose={() => useRealtime.getState().setResult(null)}
+        onLeave={() => void leave()}
+      />
 
       <Modal
         open={confirmLeave}
@@ -179,62 +188,138 @@ function IconButton({
   );
 }
 
+/** `value` once it has been set for `delayMs` (goes back to `null` immediately). */
+function useDelayed<T>(value: T | null, delayMs: number): T | null {
+  const [matured, setMatured] = useState<T | null>(null);
+  useEffect(() => {
+    if (value === null || delayMs === 0) return;
+    const timer = window.setTimeout(() => setMatured(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  if (value === null || delayMs === 0) return value;
+  return matured === value ? value : null;
+}
+
 const MEDALS = ['🥇', '🥈', '🥉'];
 
-function ResultsModal({
-  result,
-  selfId,
-  onClose,
-}: {
+interface ResultsModalProps {
   result: MatchResult | null;
+  style: ResultStyle;
   selfId: string;
+  leaving: boolean;
   onClose: () => void;
-}) {
-  const mine = result?.rankings.find((r) => r.playerId === selfId);
-  const last = result?.rankings.at(-1);
-  const title = !result
-    ? ''
-    : result.aborted
-      ? 'Partida interrompida'
-      : mine?.playerId === last?.playerId
-        ? 'Ficaste em último…'
-        : mine?.position === 1
-          ? 'Ganhaste! 🎉'
-          : `Terminaste em ${mine?.position ?? '?'}.º`;
+  onLeave: () => void;
+}
+
+function ResultsModal({ result, style, selfId, leaving, onClose, onLeave }: ResultsModalProps) {
+  const standings = result?.standings ?? [];
+  const mine = standings.find((s) => s.playerId === selfId);
+  const losers = standings.filter((s) => s.outcome === 'LOSER');
+  const name = (s: PlayerStanding) => (s.playerId === selfId ? 'Tu' : s.username);
+
+  let title = '';
+  if (result?.aborted) title = 'Partida interrompida';
+  else if (style === 'survival') title = mine?.outcome === 'LOSER' ? 'Perdeste…' : 'Sobreviveste! 🎉';
+  else if (mine?.outcome === 'LOSER') title = 'Ficaste em último…';
+  else if (mine?.outcome === 'WINNER') title = 'Ganhaste! 🎉';
+  else if (result) title = `Terminaste em ${mine?.position ?? '?'}.º`;
+
+  const nextStarter =
+    losers.length === 1
+      ? `${name(losers[0] as PlayerStanding)} ${losers[0]?.playerId === selfId ? 'começas' : 'começa'} a próxima partida.`
+      : losers.length > 1
+        ? 'Um dos perdedores, à sorte, começa a próxima partida.'
+        : undefined;
 
   return (
     <Modal
       open={result !== null}
       onClose={onClose}
       title={title}
-      description={
-        result?.aborted
-          ? 'Todos os jogadores restantes saíram.'
-          : last
-            ? `${last.playerId === selfId ? 'Tu começas' : `${last.username} começa`} a próxima partida.`
-            : undefined
-      }
+      description={result?.aborted ? 'Todos os jogadores restantes saíram.' : nextStarter}
     >
-      {result && !result.aborted && (
+      {result && !result.aborted && style === 'placement' && (
         <ol className="flex flex-col gap-2">
-          {result.rankings.map((r) => (
+          {standings.map((s) => (
             <li
-              key={r.playerId}
-              className={`flex items-center gap-3 rounded-xl px-4 py-2.5 ${r.playerId === selfId ? 'bg-gold/15' : 'bg-surface-2'}`}
+              key={s.playerId}
+              className={`flex items-center gap-3 rounded-xl px-4 py-2.5 ${s.playerId === selfId ? 'bg-gold/15' : 'bg-surface-2'}`}
             >
               <span className="w-8 text-lg" aria-hidden="true">
-                {MEDALS[r.position - 1] ?? ''}
+                {MEDALS[(s.position ?? 0) - 1] ?? ''}
               </span>
-              <span className="w-8 tabular-nums text-subtle">{r.position}.º</span>
-              <span className="font-medium">{r.username}</span>
-              {r.playerId === last?.playerId && <span className="ml-auto text-xs text-danger">perdeu</span>}
+              <span className="w-8 tabular-nums text-subtle">{s.position}.º</span>
+              <span className="font-medium">{s.username}</span>
+              {s.outcome === 'LOSER' && <span className="ml-auto text-xs text-danger">perdeu</span>}
             </li>
           ))}
         </ol>
       )}
-      <div className="mt-5 flex justify-end">
+      {result && !result.aborted && style === 'survival' && (
+        <div className="flex flex-col gap-4">
+          <SurvivalGroup
+            title={losers.length === 1 ? 'Perdeu' : 'Perderam'}
+            tone="loser"
+            standings={losers}
+            selfId={selfId}
+          />
+          <SurvivalGroup
+            title="Sobreviveram"
+            tone="survivor"
+            standings={standings.filter((s) => s.outcome !== 'LOSER')}
+            selfId={selfId}
+          />
+        </div>
+      )}
+      <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button variant="ghost" onClick={onLeave} loading={leaving}>
+          Voltar ao lobby
+        </Button>
         <Button onClick={onClose}>Voltar à sala</Button>
       </div>
     </Modal>
+  );
+}
+
+/** Losers (highlighted, with their points) or survivors of a game without winners. */
+function SurvivalGroup({
+  title,
+  tone,
+  standings,
+  selfId,
+}: {
+  title: string;
+  tone: 'loser' | 'survivor';
+  standings: PlayerStanding[];
+  selfId: string;
+}) {
+  if (standings.length === 0) return null;
+  return (
+    <section>
+      <h3
+        className={`mb-2 text-xs font-bold uppercase tracking-[0.14em] ${tone === 'loser' ? 'text-danger' : 'text-success'}`}
+      >
+        {title}
+      </h3>
+      <ul className="flex flex-col gap-1.5">
+        {standings.map((s) => (
+          <li
+            key={s.playerId}
+            className={`flex items-center gap-3 rounded-xl px-4 py-2.5 ${
+              tone === 'loser' ? 'bg-danger/12 ring-1 ring-danger/40' : 'bg-surface-2'
+            } ${s.playerId === selfId ? 'font-semibold' : ''}`}
+          >
+            <span aria-hidden="true">{tone === 'loser' ? '💀' : '🛡️'}</span>
+            <span className="min-w-0 flex-1 truncate">
+              {s.username}
+              {s.playerId === selfId && <span className="text-subtle"> (tu)</span>}
+            </span>
+            <span className={`tabular-nums ${tone === 'loser' ? 'text-danger' : 'text-muted'}`}>
+              {s.score ?? 0} {s.score === 1 ? 'ponto' : 'pontos'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

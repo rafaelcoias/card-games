@@ -8,7 +8,7 @@
  * Uses the same env as the server (apps/server/.env or the process env).
  */
 import { existsSync } from 'node:fs';
-import { accumulateStats } from '@cardroom/shared';
+import { accumulateStats, legacyOutcome } from '@cardroom/shared';
 import { loadEnv } from '../src/config/env';
 import { createFirebaseApp, createFirestore } from '../src/firebase/firebase';
 import type { HistoryDoc, ProfileDoc } from '../src/persistence/models';
@@ -29,8 +29,7 @@ async function main(): Promise<void> {
         const entry = h.data() as HistoryDoc;
         return {
           gameId: entry.gameId,
-          position: entry.position,
-          playerCount: entry.players.length,
+          outcome: entry.outcome ?? legacyOutcome(entry.position, entry.players.length),
           aborted: entry.aborted,
         };
       }),

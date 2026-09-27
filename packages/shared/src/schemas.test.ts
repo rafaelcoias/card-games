@@ -16,6 +16,8 @@ describe('shared schemas', () => {
       roomCreateSchema.safeParse({ gameId: 'x', maxPlayers: 4, isPrivate: false, hack: 1 }).success,
     ).toBe(false);
     expect(roomCreateSchema.safeParse({ gameId: 'x', maxPlayers: 1, isPrivate: false }).success).toBe(false);
+    expect(roomCreateSchema.safeParse({ gameId: 'x', maxPlayers: 10, isPrivate: false }).success).toBe(true);
+    expect(roomCreateSchema.safeParse({ gameId: 'x', maxPlayers: 11, isPrivate: false }).success).toBe(false);
   });
 
   it('trims chat and bounds its length', () => {
