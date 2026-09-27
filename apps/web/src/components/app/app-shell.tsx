@@ -16,6 +16,7 @@ import { ResumeRoomBanner } from './resume-room-banner';
 
 const NAV = [
   { href: '/lobby', label: 'Salas' },
+  { href: '/players', label: 'Jogadores' },
   { href: '/profile', label: 'Perfil' },
 ];
 
@@ -29,23 +30,7 @@ export function AppShell({ profile, children }: { profile: ProfileDto; children:
           <header className="sticky top-0 z-30 border-b border-line bg-ink/75 backdrop-blur-md">
             <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
               <Logo href="/lobby" />
-              <nav aria-label="Principal" className="ml-2 hidden items-center gap-1 sm:flex">
-                {NAV.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    aria-current={pathname.startsWith(item.href) ? 'page' : undefined}
-                    className={clsx(
-                      'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
-                      pathname.startsWith(item.href)
-                        ? 'bg-white/8 text-ivory'
-                        : 'text-muted hover:text-ivory',
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
+              <NavLinks pathname={pathname} className="ml-2 hidden items-center gap-1 sm:flex" />
               <div className="ml-auto flex items-center gap-3">
                 <ConnectionStatus />
                 <Link
@@ -58,11 +43,49 @@ export function AppShell({ profile, children }: { profile: ProfileDto; children:
                 <SignOutButton />
               </div>
             </div>
+            {/* Phones: the same links as a tab row under the header. */}
+            <NavLinks
+              pathname={pathname}
+              className="grid grid-cols-3 gap-1 border-t border-line px-2 py-1.5 sm:hidden"
+              itemClassName="text-center"
+            />
           </header>
           <ResumeRoomBanner />
           <main className="flex-1">{children}</main>
         </div>
       </SocketProvider>
     </ProfileProvider>
+  );
+}
+
+function NavLinks({
+  pathname,
+  className,
+  itemClassName,
+}: {
+  pathname: string;
+  className: string;
+  itemClassName?: string;
+}) {
+  return (
+    <nav aria-label="Principal" className={className}>
+      {NAV.map((item) => {
+        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={active ? 'page' : undefined}
+            className={clsx(
+              'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+              active ? 'bg-white/8 text-ivory' : 'text-muted hover:text-ivory',
+              itemClassName,
+            )}
+          >
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

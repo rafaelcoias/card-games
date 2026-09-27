@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { createRoom, joinAndReady, signIn, tap, uniqueName } from './helpers';
+import { expect, type Page } from '@playwright/test';
+import { createRoom, joinAndReady, signIn, tap, test, uniqueName } from './helpers';
 
 const RESULTS = { name: 'Voltar à sala' } as const;
 

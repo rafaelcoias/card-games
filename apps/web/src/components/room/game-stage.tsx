@@ -14,6 +14,7 @@ import { gameFeed } from '@/lib/realtime/game-feed';
 import { useRoomCommands } from '@/lib/realtime/socket-provider';
 import { useRealtime } from '@/lib/realtime/store';
 import { toast } from '@/lib/toast';
+import { ChatBubbles } from './chat-bubbles';
 import { ChatPanel } from './chat-panel';
 
 /** Full-screen table for a running match, with chat drawer and end-of-match results. */
@@ -25,15 +26,21 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
   const sound = useSoundPreference();
   const [chatOpen, setChatOpen] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  // After the final result there is nothing to abandon: leave without asking.
+  const matchOver = result !== null;
   const game = findGameClient(room.gameId);
   const Table = game?.Table;
 
   const leave = async () => {
+    setLeaving(true);
     const ack = await commands.leaveRoom();
+    setLeaving(false);
     if (!ack.ok) {
       toast.error(describeError(ack.error));
       return;
     }
+    setConfirmLeave(false);
     useRealtime.getState().leaveRoom();
     gameFeed.reset();
     router.push('/lobby');
@@ -53,8 +60,26 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
           <IconButton label="Chat" onClick={() => setChatOpen((o) => !o)} badge={chatOpen ? 0 : unread}>
             💬
           </IconButton>
-          <Button size="sm" variant="ghost" onClick={() => setConfirmLeave(true)}>
-            Sair
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => (matchOver ? void leave() : setConfirmLeave(true))}
+            aria-label="Sair da partida"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              className="size-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M8 4H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3M13 13l3-3-3-3M16 10H8" />
+            </svg>
+            <span className="sm:hidden">Sair</span>
+            <span className="hidden sm:inline">Sair da partida</span>
           </Button>
         </div>
       </header>
@@ -71,6 +96,8 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
             </LayoutGroup>
           </FlightLayer>
         </AnchorProvider>
+
+        <ChatBubbles selfId={selfId} chatOpen={chatOpen} onOpenChat={() => setChatOpen(true)} />
 
         <AnimatePresence>
           {chatOpen && (
@@ -101,16 +128,21 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
 
       <Modal
         open={confirmLeave}
-        onClose={() => setConfirmLeave(false)}
+        onClose={() => !leaving && setConfirmLeave(false)}
         title="Sair da partida?"
-        description="A partida continua sem ti: o servidor joga por ti a ação automática (apanhar a pilha) até ao fim."
+        description={
+          <>
+            A partida continua sem ti: a partir de agora o servidor faz as jogadas automáticas por ti até ao
+            fim, por isso é quase certo ficares em <strong className="text-ivory">último lugar</strong>.
+          </>
+        }
       >
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => setConfirmLeave(false)}>
-            Ficar
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="secondary" onClick={() => setConfirmLeave(false)} disabled={leaving}>
+            Continuar a jogar
           </Button>
-          <Button variant="danger" onClick={() => void leave()}>
-            Sair
+          <Button variant="danger" onClick={() => void leave()} loading={leaving}>
+            Sair da partida
           </Button>
         </div>
       </Modal>

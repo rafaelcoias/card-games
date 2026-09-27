@@ -10,7 +10,7 @@ export {
   type CardSize,
 } from './cards';
 export { FlightLayer, useFlights, type FlightRequest } from './flight-layer';
-export { CardFan, DrawPile, pileOffset, pileRotation, type FanPlacement } from './layouts';
+export { CardFan, DrawPile, fanStep, fanWidth, pileOffset, pileRotation, type FanPlacement } from './layouts';
 export { MotionCard, type EnterFrom, type MotionCardProps } from './motion-card';
 export { EASE_PLAY, motionTokens, transitionFor } from './motion-tokens';
 export { CardSprite, loadCardSprite } from './sprite';

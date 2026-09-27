@@ -27,6 +27,7 @@ import type { Socket } from 'socket.io';
 import { AppError, isExpectedError, toErrorPayload } from '../common/app-error';
 import { TokenVerifier } from '../auth/token-verifier';
 import { ProfilesRepository } from '../persistence/repositories';
+import { PresenceService } from '../presence/presence.service';
 import { RoomsService } from '../rooms/rooms.service';
 import type { MemberProfile } from '../rooms/room.logic';
 import { RoomStore } from '../rooms/room.store';
@@ -57,6 +58,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private readonly sessions: GameSessionsService,
     private readonly store: RoomStore,
     private readonly emitter: RealtimeEmitter,
+    private readonly presence: PresenceService,
   ) {}
 
   afterInit(server: IoServer): void {
@@ -91,6 +93,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       if (previous) this.emitter.replaceSession(previous);
       await socket.join(userChannel(userId));
       await this.rooms.onConnected(userId);
+      await this.presence.connected(socket.data.profile, socket);
       this.logger.debug({ userId, socketId: socket.id }, 'Socket connected');
     } catch (error) {
       this.logger.error({ err: error, userId }, 'Connection setup failed');
@@ -101,6 +104,9 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const userId = socket.data.profile?.id;
     if (!userId) return;
     const wasActive = await this.store.releaseConnection(userId, socket.id).catch(() => false);
+    await this.presence
+      .disconnected(userId, socket.id, wasActive)
+      .catch((error: unknown) => this.logger.warn({ err: error, userId }, 'Presence update failed'));
     if (wasActive) await this.rooms.onDisconnected(userId);
   }
 

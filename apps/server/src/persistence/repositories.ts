@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { GameRanking } from '@cardroom/game-core';
-import { FieldValue, Timestamp, type Firestore } from 'firebase-admin/firestore';
+import { emptyStats, placementOutcome } from '@cardroom/shared';
+import { FieldValue, Timestamp, type DocumentSnapshot, type Firestore } from 'firebase-admin/firestore';
 import { FIRESTORE } from '../firebase/firebase';
 import { ActionLog } from './action-log';
 import type { HistoryDoc, MatchDoc, ProfileDoc, ProfileRecord, RoomDoc, RoomStatus } from './models';
@@ -64,15 +65,50 @@ export class ProfilesRepository {
     }
     return this.find(id);
   }
+
+  async findByUsername(username: string): Promise<ProfileRecord | null> {
+    const claim = await this.db.collection(COLLECTIONS.usernames).doc(username.toLowerCase()).get();
+    const uid = (claim.data() as { uid?: string } | undefined)?.uid;
+    return uid ? this.find(uid) : null;
+  }
+
+  /** Case-insensitive username prefix search. */
+  async search(prefix: string, limit: number): Promise<ProfileRecord[]> {
+    const lower = prefix.toLowerCase();
+    const snapshot = await this.db
+      .collection(COLLECTIONS.profiles)
+      .where('usernameLower', '>=', lower)
+      .where('usernameLower', '<=', `${lower}`)
+      .orderBy('usernameLower')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map(fromSnapshot);
+  }
+
+  /** Players with the most finished matches. */
+  async mostActive(limit: number): Promise<ProfileRecord[]> {
+    const snapshot = await this.db
+      .collection(COLLECTIONS.profiles)
+      .orderBy('stats.played', 'desc')
+      .limit(limit)
+      .get();
+    return snapshot.docs.map(fromSnapshot);
+  }
+}
+
+function fromSnapshot(snapshot: DocumentSnapshot): ProfileRecord {
+  return toProfile(snapshot.id, snapshot.data() as ProfileDoc);
 }
 
 function toProfile(id: string, data: ProfileDoc): ProfileRecord {
+  const stats = data.stats ?? emptyStats();
   return {
     id,
     username: data.username,
     avatarUrl: data.avatarUrl ?? null,
     // Server timestamps are briefly null in the writer's own snapshot.
     createdAt: data.createdAt?.toDate() ?? new Date(),
+    stats: { ...emptyStats(), ...stats, byGame: stats.byGame ?? {} },
   };
 }
 
@@ -157,7 +193,10 @@ export class MatchesRepository {
     this.actionLog.append(entry);
   }
 
-  /** Records the outcome and writes each player's history entry atomically. */
+  /**
+   * Records the outcome and, atomically, each player's history entry and stat
+   * counters (increments, so concurrent matches of the same player never race).
+   */
   async finish(matchId: string, rankings: readonly GameRanking[], aborted: boolean): Promise<void> {
     await this.actionLog.flush(matchId);
     const matchRef = this.db.collection(COLLECTIONS.matches).doc(matchId);
@@ -171,6 +210,33 @@ export class MatchesRepository {
     const batch = this.db.batch();
     batch.update(matchRef, { players, finishedAt, aborted });
     for (const player of players) {
+      const outcome = placementOutcome({
+        gameId: match.gameId,
+        position: player.finalPosition,
+        playerCount: players.length,
+        aborted,
+      });
+      if (outcome) {
+        const inc = (value: number) => FieldValue.increment(value);
+        batch.set(
+          this.db.collection(COLLECTIONS.profiles).doc(player.profileId),
+          {
+            stats: {
+              played: inc(outcome.played),
+              wins: inc(outcome.wins),
+              losses: inc(outcome.losses),
+              byGame: {
+                [match.gameId]: {
+                  played: inc(outcome.played),
+                  wins: inc(outcome.wins),
+                  losses: inc(outcome.losses),
+                },
+              },
+            },
+          },
+          { merge: true },
+        );
+      }
       const entry: HistoryDoc = {
         matchId,
         gameId: match.gameId,

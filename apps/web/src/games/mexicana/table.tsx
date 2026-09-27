@@ -11,8 +11,9 @@ import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/errors';
 import { toast } from '@/lib/toast';
 import { playSound } from '../shared/sounds';
+import { TimeWarning } from '../shared/time-warning';
 import { TurnRing, useSecondsLeft } from '../shared/turn-ring';
-import { useTableLayout, type TableLayout } from '../shared/use-media';
+import { useTableLayout, useViewportHeight, type TableLayout } from '../shared/use-media';
 import type { GameTableProps } from '../types';
 import { CenterArea } from './center';
 import { indexActions, ordinal, restrictionHint, selectionKey, sortHand } from './copy';
@@ -29,15 +30,30 @@ interface Sizes {
   center: CardSize;
 }
 
-const SIZES: Record<TableLayout, Sizes> = {
-  desktop: { hand: 'lg', selfTable: 'md', opponents: 'sm', center: 'md' },
-  tablet: { hand: 'md', selfTable: 'sm', opponents: 'sm', center: 'md' },
-  phone: { hand: 'md', selfTable: 'sm', opponents: 'xs', center: 'sm' },
-};
+/**
+ * Card sizes per screen. Phones use every bit of height they have: the hand
+ * (what you read most) gets the biggest cards, opponents' table cards grow
+ * when there are few of them to fit in one row.
+ */
+function useTableSizes(layout: TableLayout, opponentCount: number): Sizes {
+  const height = useViewportHeight();
+  const fewOpponents = opponentCount <= 2;
+  if (layout === 'desktop') return { hand: 'lg', selfTable: 'md', opponents: 'sm', center: 'md' };
+  if (layout === 'tablet') return { hand: 'ml', selfTable: 'md', opponents: 'sm', center: 'md' };
+  const opponents = fewOpponents ? 'sm' : 'xs';
+  switch (height) {
+    case 'tall':
+      return { hand: 'ml', selfTable: 'md', opponents, center: 'md' };
+    case 'medium':
+      return { hand: 'md', selfTable: 'ms', opponents, center: 'ms' };
+    case 'short':
+      return { hand: 'md', selfTable: 'sm', opponents: 'xs', center: 'sm' };
+  }
+}
 
 export function MexicanaTable({ room, selfId, sendAction }: GameTableProps) {
   const layout = useTableLayout();
-  const sizes = SIZES[layout];
+  const sizes = useTableSizes(layout, room.players.length - 1);
   const players = useMemo(() => new Map(room.players.map((p) => [p.id, p])), [room.players]);
   const nameOf = useCallback(
     (id: string) => (id === selfId ? 'Tu' : (players.get(id)?.username ?? 'Alguém')),
@@ -243,6 +259,8 @@ function TableView({
         if (e.key === 'Escape') setSelection({ key: '', ids: [] });
       }}
     >
+      <TimeWarning timer={pendingTimer} />
+
       {/* Opponents */}
       <div
         className={clsx(
@@ -297,7 +315,6 @@ function TableView({
             size={sizes.hand}
             selected={selected}
             selectable={selectable}
-            flat={layout === 'phone' && hand.length > 8}
             deal={deal(selfId)}
             reclick={choosing ? 'toggle' : 'submit'}
             onToggle={toggle}

@@ -67,11 +67,35 @@ describe('ProfilesRepository', () => {
   });
 });
 
+describe('player directory', () => {
+  it('finds players by case-insensitive username prefix and by activity', async () => {
+    const tag = randomUUID().slice(0, 6);
+    const [a, b, c] = [randomUUID(), randomUUID(), randomUUID()];
+    await profiles.upsert(a, { username: `Zed${tag}_one`, avatarUrl: null });
+    await profiles.upsert(b, { username: `zed${tag}_two`, avatarUrl: null });
+    await profiles.upsert(c, { username: `other${tag}`, avatarUrl: null });
+
+    const found = await profiles.search(`ZED${tag}`, 10);
+    expect(found.map((p) => p.id).sort()).toEqual([a, b].sort());
+    expect(found[0]?.stats).toEqual({ played: 0, wins: 0, losses: 0, byGame: {} });
+    expect((await profiles.findByUsername(`ZED${tag}_ONE`))?.id).toBe(a);
+    expect(await profiles.findByUsername('nobody_here_xyz')).toBeNull();
+
+    await db
+      .collection('profiles')
+      .doc(c)
+      .update({ stats: { played: 999, wins: 0, losses: 0, byGame: {} } });
+    expect((await profiles.mostActive(1))[0]?.id).toBe(c);
+  });
+});
+
 describe('MatchesRepository', () => {
   it('records a match, its ordered action log and each player history', async () => {
     const roomId = randomUUID();
     const matchId = randomUUID();
     const [p1, p2] = [randomUUID(), randomUUID()];
+    await profiles.upsert(p1, { username: unique('ana'), avatarUrl: null });
+    await profiles.upsert(p2, { username: unique('rui'), avatarUrl: null });
     await rooms.create({
       id: roomId,
       code: 'ABCDEF',
@@ -131,5 +155,14 @@ describe('MatchesRepository', () => {
       { username: 'rui', position: 1 },
     ]);
     expect((await db.collection('rooms').doc(roomId).get()).get('status')).toBe('OPEN');
+
+    // Stat counters were incremented atomically with the result (1st = win, last = loss).
+    expect((await profiles.find(p2))?.stats).toEqual({
+      played: 1,
+      wins: 1,
+      losses: 0,
+      byGame: { mexicana: { played: 1, wins: 1, losses: 0 } },
+    });
+    expect((await profiles.find(p1))?.stats).toMatchObject({ played: 1, wins: 0, losses: 1 });
   });
 });

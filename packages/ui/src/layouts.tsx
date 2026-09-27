@@ -22,7 +22,25 @@ export interface CardFanProps<T> {
   maxRotation?: number;
   /** Lay cards flat in a scrollable strip (phones with many cards). */
   flat?: boolean;
+  /** Available width: the fan tightens its overlap to fit, down to a readable strip. */
+  maxWidth?: number;
   className?: string;
+}
+
+/** Narrowest visible strip of a covered card: still shows its corner index. */
+const MIN_VISIBLE_STRIP = 0.24;
+
+/** Horizontal distance between consecutive cards of a fan. */
+export function fanStep(count: number, size: CardSize, overlap: number, maxWidth?: number): number {
+  const width = CARD_WIDTH[size];
+  const natural = width * (1 - overlap);
+  if (maxWidth === undefined || count <= 1) return natural;
+  const fitting = (maxWidth - width) / (count - 1);
+  return Math.max(width * MIN_VISIBLE_STRIP, Math.min(natural, fitting));
+}
+
+export function fanWidth(count: number, size: CardSize, step: number): number {
+  return count === 0 ? 0 : CARD_WIDTH[size] + step * (count - 1);
 }
 
 /** Hand fan: overlapping cards on a gentle arc, from −maxRotation° to +maxRotation°. */
@@ -34,12 +52,12 @@ export function CardFan<T>({
   overlap = 0.55,
   maxRotation = 10,
   flat = false,
+  maxWidth,
   className,
 }: CardFanProps<T>) {
-  const width = CARD_WIDTH[size];
-  const step = width * (1 - overlap);
   const count = items.length;
-  const total = count === 0 ? 0 : width + step * (count - 1);
+  const step = fanStep(count, size, overlap, maxWidth);
+  const total = fanWidth(count, size, step);
   const arc = flat ? 0 : Math.min(maxRotation, count * 2.5);
 
   return (

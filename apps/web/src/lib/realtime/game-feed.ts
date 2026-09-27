@@ -24,6 +24,8 @@ class GameFeed {
   private deliveredSeq = -1;
   private matchId: string | null = null;
   private pending: { message: GameViewMessage; timer: ReturnType<typeof setTimeout> } | null = null;
+  /** performance.now() at which each view arrived (timers count down from there). */
+  private readonly arrivals = new WeakMap<GameViewMessage, number>();
 
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
@@ -45,7 +47,12 @@ class GameFeed {
     }
   }
 
+  arrivalOf(message: GameViewMessage): number {
+    return this.arrivals.get(message) ?? performance.now();
+  }
+
   pushView(message: GameViewMessage): void {
+    this.arrivals.set(message, performance.now());
     if (message.matchId !== this.matchId) {
       this.matchId = message.matchId;
       this.deliveredSeq = -1;

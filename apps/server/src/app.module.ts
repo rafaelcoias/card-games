@@ -7,7 +7,15 @@ import { HttpAuthGuard } from './auth/http-auth.guard';
 import { ENV, loadEnv, type Env } from './config/env';
 import { createGameRegistry } from './games/game-registry.provider';
 import { GAME_REGISTRY } from './games/tokens';
-import { GamesController, HealthController, MeController, RoomsController } from './http/controllers';
+import {
+  GamesController,
+  HealthController,
+  MeController,
+  PlayersController,
+  PresenceController,
+  RoomsController,
+} from './http/controllers';
+import { PresenceService } from './presence/presence.service';
 import {
   createFirebaseApp,
   createFirebaseAuth,
@@ -52,7 +60,14 @@ export function createAppModule(env: Env = loadEnv()) {
       }),
       RedisModule.forRoot(env),
     ],
-    controllers: [HealthController, GamesController, RoomsController, MeController],
+    controllers: [
+      HealthController,
+      GamesController,
+      RoomsController,
+      MeController,
+      PlayersController,
+      PresenceController,
+    ],
     providers: [
       { provide: ENV, useValue: env },
       { provide: GAME_REGISTRY, useFactory: createGameRegistry },
@@ -75,6 +90,7 @@ export function createAppModule(env: Env = loadEnv()) {
       RoomPublisher,
       GameSessionsService,
       RoomsService,
+      PresenceService,
       GameGateway,
     ],
   })

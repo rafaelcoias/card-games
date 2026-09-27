@@ -11,6 +11,7 @@
  *
  * Live room/match state is NOT here: it lives in Redis while a table is active.
  */
+import type { PlayerStats } from '@cardroom/shared';
 import type { Timestamp } from 'firebase-admin/firestore';
 
 export type RoomStatus = 'OPEN' | 'PLAYING' | 'CLOSED';
@@ -20,6 +21,8 @@ export interface ProfileDoc {
   usernameLower: string;
   avatarUrl: string | null;
   createdAt: Timestamp;
+  /** Counters maintained atomically when matches end. */
+  stats?: PlayerStats;
 }
 
 export interface ProfileRecord {
@@ -27,6 +30,7 @@ export interface ProfileRecord {
   username: string;
   avatarUrl: string | null;
   createdAt: Date;
+  stats: PlayerStats;
 }
 
 export interface RoomDoc {

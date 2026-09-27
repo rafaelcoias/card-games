@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { SESSION_COOKIE, verifyIdToken } from '@/lib/auth/id-token';
 
-const PROTECTED = ['/lobby', '/room', '/profile', '/onboarding'];
+const PROTECTED = ['/lobby', '/room', '/profile', '/players', '/onboarding'];
 const GUEST_ONLY = ['/register', '/forgot-password'];
 
 const matches = (pathname: string, prefixes: string[]) =>
@@ -30,5 +30,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.svg|cards/|api/).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon|opengraph-image|cards/|api/).*)'],
 };

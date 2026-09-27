@@ -1,4 +1,18 @@
-import { expect, type Browser, type Page } from '@playwright/test';
+import { test as base, expect, type Browser, type Page } from '@playwright/test';
+
+/**
+ * `test` whose players leave when it ends: every browser context a test opens
+ * is closed afterwards, so its accounts go offline before the next test.
+ */
+export const test = base.extend<{ closeContexts: void }>({
+  closeContexts: [
+    async ({ browser }, use) => {
+      await use();
+      await Promise.all(browser.contexts().map((context) => context.close()));
+    },
+    { auto: true },
+  ],
+});
 
 /**
  * Registers a fresh account through the real sign-up form (Firebase Auth —

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { HeroHand } from '@/components/marketing/hero-hand';
+import { OnlineCount } from '@/components/marketing/online-count';
 import { Logo } from '@/components/ui/logo';
 import { getServerSession } from '@/lib/auth/session';
 
@@ -47,7 +48,10 @@ export default async function HomePage() {
               Cria uma sala, partilha o código e joga em tempo real — com cartas clássicas, jogadas fluidas e
               regras aplicadas pelo servidor.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-6">
+              <OnlineCount signedIn={session !== null} />
+            </div>
+            <div className="mt-6 flex flex-wrap gap-3">
               <Link
                 href={primary.href}
                 className="inline-flex h-12 items-center rounded-xl bg-gold px-6 font-semibold text-gold-ink shadow-[0_8px_24px_-8px_rgb(232_193_112/0.6)] transition-colors hover:bg-gold-strong"
@@ -89,7 +93,7 @@ export default async function HomePage() {
       </main>
 
       <footer className="mx-auto flex max-w-6xl items-center justify-between px-4 py-8 text-sm text-subtle sm:px-6">
-        <span>Cardroom</span>
+        <span>Cards</span>
         <Link href="/dev/cards" className="hover:text-ivory">
           O baralho
         </Link>

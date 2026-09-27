@@ -95,11 +95,24 @@ export interface GameCatalogEntry {
   maxPlayers: number;
 }
 
+export interface GameStats {
+  played: number;
+  /** Finished first. */
+  wins: number;
+  /** Finished last (in Mexicana: the loser). */
+  losses: number;
+}
+
+export interface PlayerStats extends GameStats {
+  byGame: Record<string, GameStats>;
+}
+
 export interface ProfileDto {
   id: string;
   username: string;
   avatarUrl: string | null;
   createdAt: string;
+  stats: PlayerStats;
 }
 
 export interface MeResponse {
@@ -116,4 +129,37 @@ export interface MatchHistoryEntry {
   finishedAt: string | null;
   position: number | null;
   players: { username: string; position: number | null }[];
+}
+
+/** Where an online player currently is. */
+export type PresenceStatus = 'lobby' | 'room' | 'playing';
+
+export interface OnlinePlayer {
+  id: string;
+  username: string;
+  avatarUrl: string | null;
+  status: PresenceStatus;
+  /** Game of the room they are in, if any. */
+  gameName: string | null;
+  /** Only for public rooms (private codes are never exposed). */
+  roomCode: string | null;
+}
+
+export interface PresenceSnapshot {
+  count: number;
+  players: OnlinePlayer[];
+}
+
+export interface PlayerSummary {
+  id: string;
+  username: string;
+  avatarUrl: string | null;
+  stats: PlayerStats;
+  online: boolean;
+}
+
+export interface PlayerProfile extends PlayerSummary {
+  createdAt: string;
+  presence: OnlinePlayer | null;
+  recentMatches: MatchHistoryEntry[];
 }

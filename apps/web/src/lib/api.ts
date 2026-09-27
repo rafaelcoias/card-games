@@ -2,6 +2,9 @@ import type {
   GameCatalogEntry,
   MatchHistoryEntry,
   MeResponse,
+  PlayerProfile,
+  PlayerSummary,
+  PresenceSnapshot,
   ProfileDto,
   PublicRoomSummary,
   UpdateProfilePayload,
@@ -53,6 +56,10 @@ export function createApi(getToken: () => Promise<string | null>) {
     history: () => request<MatchHistoryEntry[]>('/me/matches'),
     publicRooms: () => request<PublicRoomSummary[]>('/rooms/public'),
     games: () => request<GameCatalogEntry[]>('/games'),
+    players: (search = '') => request<PlayerSummary[]>(`/players?search=${encodeURIComponent(search)}`),
+    player: (username: string) => request<PlayerProfile>(`/players/${encodeURIComponent(username)}`),
+    presence: () => request<PresenceSnapshot>('/presence'),
+    presenceCount: () => request<{ count: number }>('/presence/count'),
   };
 }
 

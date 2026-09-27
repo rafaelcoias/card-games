@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { signIn, uniqueName } from './helpers';
+import { expect, type Page } from '@playwright/test';
+import { signIn, test, uniqueName } from './helpers';
 
 const AUTH_EMULATOR = process.env.FIREBASE_AUTH_EMULATOR_HOST ?? '127.0.0.1:9099';
 const PROJECT = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? 'demo-cardroom';

@@ -1,8 +1,13 @@
 'use client';
 
-import { CardFan, MotionCard, useAnchorRef, type CardSize } from '@cardroom/ui';
+import { CardFan, fanStep, fanWidth, MotionCard, useAnchorRef, type CardSize } from '@cardroom/ui';
 import { useRef, type KeyboardEvent } from 'react';
+import { useElementWidth } from '../shared/use-element-width';
 import { ANCHORS, dealDelaySeconds, type SceneCard } from './scene';
+
+const OVERLAP = 0.55;
+/** Room for the fan's rotation and the lifted (selected) card's shadow. */
+const FAN_GUTTER = 12;
 
 export interface HandProps {
   cards: SceneCard[];
@@ -10,7 +15,6 @@ export interface HandProps {
   selected: ReadonlySet<string>;
   /** Cards that may be (part of) a legal selection; others are dimmed. `null` = not your decision. */
   selectable: ReadonlySet<string> | null;
-  flat: boolean;
   deal: { seatIndex: number; seatCount: number } | null;
   /** What tapping an already selected card does: play the selection, or deselect it. */
   reclick: 'submit' | 'toggle';
@@ -19,22 +23,19 @@ export interface HandProps {
 }
 
 /**
- * The player's hand as a fan. Tap/click or Enter selects, tapping a selected
- * card again (or Space) plays; arrows move focus between cards.
+ * The player's hand as a fan that tightens to fit the screen width; only when
+ * even the tightest fan does not fit does it become a flat, scrollable strip.
+ * Tap/click or Enter selects, tapping a selected card again (or Space) plays;
+ * arrows move focus between cards.
  */
-export function Hand({
-  cards,
-  size,
-  selected,
-  selectable,
-  flat,
-  deal,
-  reclick,
-  onToggle,
-  onSubmit,
-}: HandProps) {
+export function Hand({ cards, size, selected, selectable, deal, reclick, onToggle, onSubmit }: HandProps) {
   const anchorRef = useAnchorRef<HTMLDivElement>(ANCHORS.selfHand);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [measureRef, measured] = useElementWidth<HTMLDivElement>();
+  const available = measured === null ? undefined : Math.max(0, measured - FAN_GUTTER);
+  const scroll =
+    available !== undefined &&
+    fanWidth(cards.length, size, fanStep(cards.length, size, OVERLAP, available)) > available;
 
   const focusSibling = (from: HTMLElement, delta: number) => {
     const items = Array.from(
@@ -66,62 +67,65 @@ export function Hand({
   };
 
   return (
-    <div
-      ref={(el) => {
-        containerRef.current = el;
-        anchorRef(el);
-      }}
-      className={flat ? 'scrollbar-none -mx-4 max-w-[100vw] overflow-x-auto px-4 pb-1 pt-4' : 'pt-4'}
-      role="group"
-      aria-label={`A tua mão: ${cards.length} cartas`}
-    >
-      <CardFan
-        items={cards}
-        size={size}
-        flat={flat}
-        overlap={flat ? 0.5 : 0.55}
-        getKey={(c) => c.card.id}
-        renderItem={({ card, enter }, placement, index) => {
-          const isSelectable = selectable?.has(card.id) ?? false;
-          const isSelected = selected.has(card.id);
-          return (
-            <div data-hand-card>
-              <MotionCard
-                id={card.id}
-                size={size}
-                layoutId={`card-${card.id}`}
-                enter={
-                  deal
-                    ? {
-                        from: ANCHORS.draw,
-                        kind: 'deal',
-                        delay: dealDelaySeconds(3 + index, deal.seatIndex, deal.seatCount),
-                      }
-                    : enter
-                }
-                rotate={placement.rotate}
-                lifted={isSelected}
-                interactive={selectable !== null}
-                state={
-                  selectable === null
-                    ? 'normal'
-                    : isSelected
-                      ? 'selected'
-                      : isSelectable
-                        ? 'playable'
-                        : 'disabled'
-                }
-                onClick={() => {
-                  if (!isSelectable) return;
-                  if (isSelected && reclick === 'submit') onSubmit();
-                  else onToggle(card.id);
-                }}
-                onKeyDown={onKeyDown(card.id)}
-              />
-            </div>
-          );
+    <div ref={measureRef} className="w-full">
+      <div
+        ref={(el) => {
+          containerRef.current = el;
+          anchorRef(el);
         }}
-      />
+        className={scroll ? 'scrollbar-none overflow-x-auto px-1 pb-1 pt-4' : 'flex justify-center pt-4'}
+        role="group"
+        aria-label={`A tua mão: ${cards.length} cartas`}
+      >
+        <CardFan
+          items={cards}
+          size={size}
+          flat={scroll}
+          overlap={OVERLAP}
+          maxWidth={scroll ? undefined : available}
+          getKey={(c) => c.card.id}
+          renderItem={({ card, enter }, placement, index) => {
+            const isSelectable = selectable?.has(card.id) ?? false;
+            const isSelected = selected.has(card.id);
+            return (
+              <div data-hand-card>
+                <MotionCard
+                  id={card.id}
+                  size={size}
+                  layoutId={`card-${card.id}`}
+                  enter={
+                    deal
+                      ? {
+                          from: ANCHORS.draw,
+                          kind: 'deal',
+                          delay: dealDelaySeconds(3 + index, deal.seatIndex, deal.seatCount),
+                        }
+                      : enter
+                  }
+                  rotate={placement.rotate}
+                  lifted={isSelected}
+                  interactive={selectable !== null}
+                  state={
+                    selectable === null
+                      ? 'normal'
+                      : isSelected
+                        ? 'selected'
+                        : isSelectable
+                          ? 'playable'
+                          : 'disabled'
+                  }
+                  onClick={() => {
+                    if (!isSelectable) return;
+                    if (isSelected && reclick === 'submit') onSubmit();
+                    else onToggle(card.id);
+                  }}
+                  onKeyDown={onKeyDown(card.id)}
+                />
+              </div>
+            );
+          }}
+        />
+      </div>
     </div>
   );
 }

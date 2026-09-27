@@ -7,6 +7,8 @@ import { useState } from 'react';
 import { Avatar } from '@/components/ui/avatar';
 import { describeError } from '@/lib/errors';
 import { toast } from '@/lib/toast';
+import { gameFeed } from '@/lib/realtime/game-feed';
+import { TimeWarning } from '../shared/time-warning';
 import { TurnRing } from '../shared/turn-ring';
 import { useLatestGameView } from '../shared/use-game-view';
 import { useTableLayout } from '../shared/use-media';
@@ -20,6 +22,10 @@ export function HighCardTable({ room, selfId, sendAction }: GameTableProps) {
   if (!message) return <div className="felt h-full" />;
 
   const { view, validActions } = message;
+  const myTimer =
+    message.timer && message.timer.playerIds.includes(selfId)
+      ? { ...message.timer, receivedAt: gameFeed.arrivalOf(message) }
+      : null;
   const playable = new Set(validActions.map((a) => a.cardId));
   const nameOf = (id: string) => room.players.find((p) => p.id === id)?.username ?? '—';
 
@@ -33,6 +39,7 @@ export function HighCardTable({ room, selfId, sendAction }: GameTableProps) {
 
   return (
     <div className="felt flex h-full flex-col items-center justify-between gap-6 overflow-hidden px-4 py-6">
+      <TimeWarning timer={myTimer} />
       <div className="text-center">
         <p className="font-display text-2xl font-semibold">
           Ronda {Math.min(view.round, view.rounds)} de {view.rounds}

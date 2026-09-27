@@ -12,6 +12,7 @@ import { gameFeed } from '@/lib/realtime/game-feed';
 import { useRoomCommands } from '@/lib/realtime/socket-provider';
 import { useRealtime } from '@/lib/realtime/store';
 import { toast } from '@/lib/toast';
+import { PlayerLink } from '@/components/players/player-link';
 import { ChatPanel } from './chat-panel';
 
 export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string }) {
@@ -169,7 +170,7 @@ function PlayerRow({
       <Avatar name={player.username} src={player.avatarUrl} size={36} dimmed={!player.connected} />
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium">
-          {player.username} {isSelf && <span className="text-subtle">(tu)</span>}
+          <PlayerLink username={player.username} /> {isSelf && <span className="text-subtle">(tu)</span>}
         </p>
         <p
           className={clsx(

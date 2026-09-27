@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "test:int": "vitest run --config vitest.int.config.ts"
+    "test:int": "vitest run --config vitest.int.config.ts",
+    "backfill:stats": "tsx scripts/backfill-stats.ts"
   },
   "dependencies": {
     "@cardroom/game-core": "workspace:*",
