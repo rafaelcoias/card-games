@@ -89,6 +89,7 @@ Depois apaga a chave antiga na Google Cloud Console (*IAM → Service accounts �
 ## Verificar que está tudo bem
 
 - `https://server-production-c483.up.railway.app/api/health` → `{"status":"ok"}`
+- `https://server-production-c483.up.railway.app/api/presence/count` → quantos jogadores estão online
 - Logs: `railway logs --service server` / `railway logs --service web`
 - Teste automático contra produção (cria contas de teste reais; apaga-as no fim):
 
@@ -96,6 +97,16 @@ Depois apaga a chave antiga na Google Cloud Console (*IAM → Service accounts �
   cd apps/web
   E2E_BASE_URL=https://card-games-production-9d3d.up.railway.app npx playwright test e2e/multiplayer.spec.ts
   ```
+
+## Estatísticas dos jogadores
+
+As vitórias, derrotas e partidas de cada perfil são contadas quando uma partida acaba. Para perfis criados
+antes disso existirem, recalcula-as a partir do histórico (usa a chave local de `apps/server/.env`; só mexe
+em perfis sem estatísticas, a não ser com `--force`):
+
+```bash
+pnpm --filter @cardroom/server backfill:stats
+```
 
 ## Problemas comuns
 
