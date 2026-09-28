@@ -5,6 +5,8 @@ export interface RoomMember {
   id: string;
   username: string;
   avatarUrl: string | null;
+  /** Playing as a guest (absent on members saved before guests existed). */
+  guest?: boolean;
   seat: number;
   ready: boolean;
   connected: boolean;

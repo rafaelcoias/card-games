@@ -36,8 +36,9 @@ export class ProfilesRepository {
   }
 
   /**
-   * Creates or updates a profile, reserving the username case-insensitively in
-   * a transaction. Returns `null` when someone else already owns the username.
+   * Creates or updates an account's profile, reserving the username
+   * case-insensitively in a transaction (a guest who created an account becomes
+   * a regular player here). Returns `null` when someone else owns the username.
    */
   async upsert(
     id: string,
@@ -49,12 +50,13 @@ export class ProfilesRepository {
     try {
       await this.db.runTransaction(async (tx) => {
         const [profileSnap, claimSnap] = await Promise.all([tx.get(profileRef), tx.get(claimRef)]);
-        const claimOwner = (claimSnap.data() as { uid?: string } | undefined)?.uid;
-        if (claimOwner && claimOwner !== id) throw new UsernameTakenError();
+        if (claimOwner(claimSnap) && claimOwner(claimSnap) !== id) throw new UsernameTakenError();
 
         const current = profileSnap.data() as ProfileDoc | undefined;
         if (current && current.usernameLower !== usernameLower) {
-          tx.delete(this.db.collection(COLLECTIONS.usernames).doc(current.usernameLower));
+          // Only a claim of our own is released: a guest's old name was never reserved.
+          const oldClaimRef = this.db.collection(COLLECTIONS.usernames).doc(current.usernameLower);
+          if (claimOwner(await tx.get(oldClaimRef)) === id) tx.delete(oldClaimRef);
         }
         tx.set(claimRef, { uid: id });
         tx.set(
@@ -63,6 +65,7 @@ export class ProfilesRepository {
             username: input.username,
             usernameLower,
             avatarUrl: input.avatarUrl,
+            guest: false,
             ...(current ? {} : { createdAt: FieldValue.serverTimestamp() }),
           },
           { merge: true },
@@ -75,13 +78,43 @@ export class ProfilesRepository {
     return this.find(id);
   }
 
+  /**
+   * A guest's temporary name: not reserved (it never blocks anyone's account),
+   * but it may not be a name someone already owns. `null` when it is.
+   */
+  async upsertGuest(
+    id: string,
+    input: { username: string; avatarUrl: string | null },
+  ): Promise<ProfileRecord | null> {
+    const profileRef = this.db.collection(COLLECTIONS.profiles).doc(id);
+    const usernameLower = input.username.toLowerCase();
+    const claimRef = this.db.collection(COLLECTIONS.usernames).doc(usernameLower);
+    const taken = await this.db.runTransaction(async (tx) => {
+      const [profileSnap, claimSnap] = await Promise.all([tx.get(profileRef), tx.get(claimRef)]);
+      if (claimOwner(claimSnap)) return true;
+      tx.set(
+        profileRef,
+        {
+          username: input.username,
+          usernameLower,
+          avatarUrl: input.avatarUrl,
+          guest: true,
+          ...(profileSnap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+        },
+        { merge: true },
+      );
+      return false;
+    });
+    return taken ? null : this.find(id);
+  }
+
   async findByUsername(username: string): Promise<ProfileRecord | null> {
     const claim = await this.db.collection(COLLECTIONS.usernames).doc(username.toLowerCase()).get();
     const uid = (claim.data() as { uid?: string } | undefined)?.uid;
     return uid ? this.find(uid) : null;
   }
 
-  /** Case-insensitive username prefix search. */
+  /** Case-insensitive username prefix search (players with an account only). */
   async search(prefix: string, limit: number): Promise<ProfileRecord[]> {
     const lower = prefix.toLowerCase();
     const snapshot = await this.db
@@ -89,21 +122,38 @@ export class ProfilesRepository {
       .where('usernameLower', '>=', lower)
       .where('usernameLower', '<=', `${lower}`)
       .orderBy('usernameLower')
-      .limit(limit)
+      .limit(limit + GUEST_SLACK)
       .get();
-    return snapshot.docs.map(fromSnapshot);
+    return withoutGuests(snapshot.docs, limit);
   }
 
-  /** Players with the most finished matches. */
+  /** Players (with an account) with the most finished matches. */
   async mostActive(limit: number): Promise<ProfileRecord[]> {
     const snapshot = await this.db
       .collection(COLLECTIONS.profiles)
       .orderBy('stats.played', 'desc')
-      .limit(limit)
+      .limit(limit + GUEST_SLACK)
       .get();
-    return snapshot.docs.map(fromSnapshot);
+    return withoutGuests(snapshot.docs, limit);
   }
 }
+
+/**
+ * Guests have no public profile, so the directory leaves them out. Firestore
+ * cannot combine that filter with these range queries without an index per
+ * query, so a few extra documents are read and guests dropped here.
+ */
+const GUEST_SLACK = 20;
+
+function withoutGuests(docs: readonly DocumentSnapshot[], limit: number): ProfileRecord[] {
+  return docs
+    .map(fromSnapshot)
+    .filter((profile) => !profile.guest)
+    .slice(0, limit);
+}
+
+const claimOwner = (claim: DocumentSnapshot): string | undefined =>
+  (claim.data() as { uid?: string } | undefined)?.uid;
 
 function fromSnapshot(snapshot: DocumentSnapshot): ProfileRecord {
   return toProfile(snapshot.id, snapshot.data() as ProfileDoc);
@@ -115,6 +165,7 @@ function toProfile(id: string, data: ProfileDoc): ProfileRecord {
     id,
     username: data.username,
     avatarUrl: data.avatarUrl ?? null,
+    guest: data.guest === true,
     // Server timestamps are briefly null in the writer's own snapshot.
     createdAt: data.createdAt?.toDate() ?? new Date(),
     stats: { ...emptyStats(), ...stats, byGame: stats.byGame ?? {} },
@@ -152,7 +203,7 @@ export class RoomsRepository {
   }
 }
 
-export interface MatchHistoryRow extends Omit<MatchHistoryPlayer, 'username'> {
+export interface MatchHistoryRow extends Omit<MatchHistoryPlayer, 'username' | 'guest'> {
   id: string;
   gameId: string;
   startedAt: Date;
@@ -164,10 +215,19 @@ export interface MatchHistoryRow extends Omit<MatchHistoryPlayer, 'username'> {
 function readPlayer(doc: HistoryPlayerDoc, playerCount: number): MatchHistoryPlayer {
   return {
     username: doc.username,
+    guest: doc.guest === true,
     position: doc.position,
     outcome: doc.outcome ?? legacyOutcome(doc.position, playerCount),
     score: doc.score ?? null,
   };
+}
+
+/** Someone who played in a match, as recorded when they sat down. */
+export interface MatchPlayer {
+  profileId: string;
+  username: string;
+  seat: number;
+  guest: boolean;
 }
 
 @Injectable()
@@ -184,7 +244,7 @@ export class MatchesRepository {
     seed: string;
     config: Record<string, unknown>;
     startedAt: Date;
-    players: { profileId: string; username: string; seat: number }[];
+    players: MatchPlayer[];
   }): Promise<void> {
     const doc: MatchDoc = {
       roomId: match.roomId,
@@ -201,10 +261,7 @@ export class MatchesRepository {
   }
 
   /** Someone sat down at a running SESSION table: they get a history entry when it ends. */
-  async addPlayer(
-    matchId: string,
-    player: { profileId: string; username: string; seat: number },
-  ): Promise<void> {
+  async addPlayer(matchId: string, player: MatchPlayer): Promise<void> {
     const doc: MatchPlayerDoc = { ...player, finalPosition: null, outcome: null, score: null };
     await this.db
       .collection(COLLECTIONS.matches)
@@ -281,6 +338,7 @@ export class MatchesRepository {
         aborted,
         players: players.map((p) => ({
           username: p.username,
+          guest: p.guest === true,
           position: p.finalPosition,
           outcome: p.outcome,
           score: p.score,

@@ -5,6 +5,8 @@ import { AppError } from '../common/app-error';
 export interface AuthIdentity {
   userId: string;
   email: string | null;
+  /** Firebase anonymous sign-in: a guest playing under a temporary name. */
+  guest: boolean;
 }
 
 /** Turns a bearer token into an identity; throws `UNAUTHORIZED` otherwise. */
@@ -24,7 +26,11 @@ export class FirebaseTokenVerifier extends TokenVerifier {
   async verify(token: string): Promise<AuthIdentity> {
     try {
       const decoded = await this.auth.verifyIdToken(token);
-      return { userId: decoded.uid, email: decoded.email ?? null };
+      return {
+        userId: decoded.uid,
+        email: decoded.email ?? null,
+        guest: decoded.firebase.sign_in_provider === 'anonymous',
+      };
     } catch {
       throw new AppError(ErrorCode.Unauthorized, 'Invalid or expired session');
     }

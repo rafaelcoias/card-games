@@ -168,6 +168,7 @@ export function FodinhaPreview() {
       ready: true,
       connected: id !== 'gil',
       away: false,
+      guest: false,
     }));
     return {
       scene: sceneFromView(`dev-${scenario.label}`, 1, view),

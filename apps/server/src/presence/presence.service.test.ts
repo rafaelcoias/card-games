@@ -22,7 +22,7 @@ function fakeRedis() {
   return { redis: { multi: () => tx } as unknown as Redis, commands };
 }
 
-const profile = { id: 'u1', username: 'ana', avatarUrl: null };
+const profile = { id: 'u1', username: 'ana', avatarUrl: null, guest: false };
 
 function setup() {
   const { redis, commands } = fakeRedis();

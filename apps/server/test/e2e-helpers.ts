@@ -33,14 +33,19 @@ export interface Bot<View = unknown, Action = unknown> {
   snapshots: number;
 }
 
-/** Creates a real user in the Auth emulator and returns its Firebase ID token. */
-async function signUp(email: string): Promise<{ id: string; token: string }> {
+/**
+ * Creates a real user in the Auth emulator and returns its Firebase ID token.
+ * Without an e-mail it is an anonymous user: a guest.
+ */
+async function signUp(email: string | null): Promise<{ id: string; token: string }> {
   const response = await fetch(
     `http://${AUTH_EMULATOR}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=demo-key`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email, password: 'secret123', returnSecureToken: true }),
+      body: JSON.stringify(
+        email ? { email, password: 'secret123', returnSecureToken: true } : { returnSecureToken: true },
+      ),
     },
   );
   if (!response.ok) throw new Error(`Auth emulator signUp failed: ${await response.text()}`);
@@ -70,11 +75,17 @@ export function connect(bot: Pick<Bot, 'token' | 'url'>): Promise<ClientSocket> 
 }
 
 /** Registers `count` users with profiles and connects them, spread over the servers. */
-export async function createBots<View, Action>(prefix: string, count: number): Promise<Bot<View, Action>[]> {
+export async function createBots<View, Action>(
+  prefix: string,
+  count: number,
+  options: { guests?: number } = {},
+): Promise<Bot<View, Action>[]> {
   const bots: Bot<View, Action>[] = [];
   for (let i = 0; i < count; i++) {
     const name = `${prefix}_${i}`;
-    const { id, token } = await signUp(`${name}@example.com`);
+    // The last `guests` bots play without an account (anonymous sign-in).
+    const guest = i >= count - (options.guests ?? 0);
+    const { id, token } = await signUp(guest ? null : `${name}@example.com`);
     await api(token, '/me/profile', { method: 'PUT', body: JSON.stringify({ username: name }) });
     const url = SERVERS[i % SERVERS.length] as string;
     bots.push({

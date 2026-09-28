@@ -35,7 +35,7 @@ function room(overrides: Partial<RoomRecord> = {}): RoomRecord {
   };
 }
 
-const profile = (id: string) => ({ id, username: id.toUpperCase(), avatarUrl: null });
+const profile = (id: string) => ({ id, username: id.toUpperCase(), avatarUrl: null, guest: false });
 
 function withMembers(...ids: string[]): RoomRecord {
   const r = room({ hostId: ids[0] });

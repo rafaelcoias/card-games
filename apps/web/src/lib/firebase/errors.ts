@@ -13,6 +13,8 @@ const MESSAGES: Record<string, string> = {
   'auth/invalid-action-code': 'O link expirou ou já foi usado. Pede um novo.',
   'auth/expired-action-code': 'O link expirou. Pede um novo.',
   'auth/operation-not-allowed': 'Este método de entrada não está ativo no Firebase.',
+  'auth/admin-restricted-operation': 'O modo convidado não está ativo no Firebase.',
+  'auth/credential-already-in-use': 'Esse e-mail já tem conta. Experimenta entrar.',
   'auth/unauthorized-continue-uri': 'Domínio não autorizado no Firebase (Authentication → Settings).',
 };
 

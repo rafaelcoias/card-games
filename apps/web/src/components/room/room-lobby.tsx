@@ -189,7 +189,8 @@ function PlayerRow({
       <Avatar name={player.username} src={player.avatarUrl} size={36} dimmed={!player.connected} />
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium">
-          <PlayerLink username={player.username} /> {isSelf && <span className="text-subtle">(tu)</span>}
+          <PlayerLink username={player.username} guest={player.guest} />{' '}
+          {isSelf && <span className="text-subtle">(tu)</span>}
         </p>
         <p
           className={clsx(

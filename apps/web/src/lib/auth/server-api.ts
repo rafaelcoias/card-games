@@ -6,6 +6,11 @@ import { getServerSession } from './session';
 export type MeResult =
   { kind: 'signed-out' } | { kind: 'unavailable' } | { kind: 'ok'; me: MeResponse; accessToken: string };
 
+/** Signed in with an account but still carrying a guest's temporary name: time to claim a username. */
+export function needsUsername(me: MeResponse): boolean {
+  return !me.guest && me.profile?.guest === true;
+}
+
 /** Loads the signed-in user's profile from the game server during SSR. */
 export async function loadMe(): Promise<MeResult> {
   const session = await getServerSession();

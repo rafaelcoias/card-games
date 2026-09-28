@@ -81,7 +81,12 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const identity = await this.verifier.verify(token);
     const profile = await this.profiles.find(identity.userId);
     if (!profile) throw new AppError(ErrorCode.ProfileRequired, 'Choose a username first');
-    socket.data.profile = { id: profile.id, username: profile.username, avatarUrl: profile.avatarUrl };
+    socket.data.profile = {
+      id: profile.id,
+      username: profile.username,
+      avatarUrl: profile.avatarUrl,
+      guest: profile.guest,
+    };
     socket.data.limits = createSocketRateLimits();
   }
 

@@ -12,6 +12,8 @@ export interface RoomPlayer {
   connected: boolean;
   /** Grace period expired (or left mid-game): the server plays default actions for them. */
   away: boolean;
+  /** Playing as a guest: a temporary name, no account and no public profile. */
+  guest: boolean;
 }
 
 export interface PlayerStanding extends GameStanding {
@@ -116,6 +118,8 @@ export interface ProfileDto {
   id: string;
   username: string;
   avatarUrl: string | null;
+  /** A guest's temporary name: not reserved and without a public profile. */
+  guest: boolean;
   createdAt: string;
   stats: PlayerStats;
 }
@@ -123,11 +127,15 @@ export interface ProfileDto {
 export interface MeResponse {
   userId: string;
   email: string | null;
+  /** Signed in without an account (Firebase anonymous sign-in). */
+  guest: boolean;
   profile: ProfileDto | null;
 }
 
 export interface MatchHistoryPlayer {
   username: string;
+  /** Played as a guest (no public profile to link to). */
+  guest: boolean;
   position: number | null;
   outcome: Outcome | null;
   score: number | null;
@@ -153,6 +161,7 @@ export interface OnlinePlayer {
   id: string;
   username: string;
   avatarUrl: string | null;
+  guest: boolean;
   status: PresenceStatus;
   /** Game of the room they are in, if any. */
   gameName: string | null;

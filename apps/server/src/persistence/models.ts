@@ -20,6 +20,8 @@ export type RoomStatus = 'OPEN' | 'PLAYING' | 'CLOSED';
 export interface ProfileDoc {
   username: string;
   usernameLower: string;
+  /** Guests keep a temporary name that is not reserved in `usernames`. */
+  guest?: boolean;
   avatarUrl: string | null;
   createdAt: Timestamp;
   /** Counters maintained atomically when matches end. */
@@ -30,6 +32,7 @@ export interface ProfileRecord {
   id: string;
   username: string;
   avatarUrl: string | null;
+  guest: boolean;
   createdAt: Date;
   stats: PlayerStats;
 }
@@ -48,6 +51,7 @@ export interface RoomDoc {
 export interface MatchPlayerDoc {
   profileId: string;
   username: string;
+  guest?: boolean;
   seat: number;
   finalPosition: number | null;
   /** Absent on matches recorded before outcomes existed (derive from `finalPosition`). */
@@ -77,6 +81,7 @@ export interface ActionDoc {
 
 export interface HistoryPlayerDoc {
   username: string;
+  guest?: boolean;
   position: number | null;
   /** Absent on entries written before outcomes existed (derive from `position`). */
   outcome?: Outcome | null;

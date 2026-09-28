@@ -89,10 +89,11 @@ export class GameSessionsService implements OnModuleInit {
         seed,
         config,
         startedAt: new Date(session.startedAt),
-        players: players.map((profileId, seat) => ({
-          profileId,
-          seat,
-          username: room.members.find((m) => m.id === profileId)?.username ?? '—',
+        players: members.map((m) => ({
+          profileId: m.id,
+          seat: m.seat,
+          username: m.username,
+          guest: m.guest === true,
         })),
       }),
     );
@@ -145,7 +146,12 @@ export class GameSessionsService implements OnModuleInit {
     this.apply(room, module, sessionActions.joined(member.id, member.seat), SYSTEM_PLAYER_ID, true, effects);
     if (firstTime) {
       const { matchId } = session;
-      const player = { profileId: member.id, username: member.username, seat: member.seat };
+      const player = {
+        profileId: member.id,
+        username: member.username,
+        seat: member.seat,
+        guest: member.guest === true,
+      };
       effects.defer(() => this.matches.addPlayer(matchId, player));
     }
   }

@@ -9,6 +9,7 @@ export interface MemberProfile {
   id: string;
   username: string;
   avatarUrl: string | null;
+  guest: boolean;
 }
 
 export function findMember(room: RoomRecord, userId: string): RoomMember | undefined {
@@ -194,6 +195,7 @@ export function toRoomState(room: RoomRecord, gameName: string): RoomState {
       ready: m.ready,
       connected: m.connected,
       away: m.away,
+      guest: m.guest === true,
     })),
     config: room.config,
     matchId: room.session?.matchId ?? null,

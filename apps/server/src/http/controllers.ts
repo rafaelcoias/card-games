@@ -40,6 +40,7 @@ const toProfileDto = (profile: ProfileRecord): ProfileDto => ({
   id: profile.id,
   username: profile.username,
   avatarUrl: profile.avatarUrl,
+  guest: profile.guest,
   createdAt: profile.createdAt.toISOString(),
   stats: profile.stats,
 });
@@ -98,6 +99,7 @@ export class MeController {
     return {
       userId: identity.userId,
       email: identity.email,
+      guest: identity.guest,
       profile: profile ? toProfileDto(profile) : null,
     };
   }
@@ -108,10 +110,12 @@ export class MeController {
     if (!parsed.success) {
       throw new BadRequestException({ code: ErrorCode.Validation, message: parsed.error.issues[0]?.message });
     }
-    const profile = await this.profiles.upsert(identity.userId, {
-      username: parsed.data.username,
-      avatarUrl: parsed.data.avatarUrl ?? null,
-    });
+    // Guests pick a temporary name; an account reserves its username (a guest who
+    // created an account keeps their history and now claims a name for good).
+    const input = { username: parsed.data.username, avatarUrl: parsed.data.avatarUrl ?? null };
+    const profile = identity.guest
+      ? await this.profiles.upsertGuest(identity.userId, input)
+      : await this.profiles.upsert(identity.userId, input);
     if (!profile) {
       throw new ConflictException({ code: ErrorCode.UsernameTaken, message: 'That username is taken' });
     }

@@ -76,6 +76,14 @@ export default async function HomePage() {
               >
                 {primary.label}
               </Link>
+              {!session && (
+                <Link
+                  href="/guest"
+                  className="inline-flex h-12 items-center rounded-xl border border-gold/50 px-6 font-semibold text-gold hover:bg-gold/10"
+                >
+                  Jogar como convidado
+                </Link>
+              )}
               <a
                 href="#regras"
                 className="inline-flex h-12 items-center rounded-xl border border-line-strong px-6 font-semibold hover:bg-white/5"

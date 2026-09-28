@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 import { SignOutButton } from '@/components/auth/sign-out-button';
 import { Avatar } from '@/components/ui/avatar';
 import { Logo } from '@/components/ui/logo';
+import { GuestTag } from '@/components/players/player-link';
 import { SocketProvider } from '@/lib/realtime/socket-provider';
 import { ConnectionStatus } from './connection-status';
 import { ProfileProvider } from './profile-context';
@@ -39,8 +40,9 @@ export function AppShell({ profile, children }: { profile: ProfileDto; children:
                 >
                   <Avatar name={profile.username} src={profile.avatarUrl} size={30} />
                   <span className="hidden text-sm font-medium sm:inline">{profile.username}</span>
+                  {profile.guest && <GuestTag className="hidden sm:inline" />}
                 </Link>
-                <SignOutButton />
+                <SignOutButton guest={profile.guest} />
               </div>
             </div>
             {/* Phones: the same links as a tab row under the header. */}

@@ -66,11 +66,25 @@ partida acaba, o resultado, o log de ações e o histórico ficam no Firestore.
    o separador fechado, o `/login` renova-o sem pedir nada ao utilizador.
 4. O servidor de jogo verifica o mesmo ID token (handshake do socket e REST) com o Firebase Admin SDK.
 
+#### Convidados
+
+Quem não quer conta entra em `/guest` (também a partir do `/login` de um link de sala): escolhe um nome e
+joga. Por baixo é o **login anónimo do Firebase**, por isso o resto do fluxo (cookie, socket, REST) é igual; o
+token traz `firebase.sign_in_provider = "anonymous"` e é daí que web e servidor sabem que é convidado.
+
+- O nome de um convidado **não é reservado** (não entra em `usernames/`), mas um convidado não pode usar o
+  nome de uma conta. Os convidados não aparecem na pesquisa nem têm página pública (`/players/{nome}` dá 404).
+- As partidas contam no histórico e nas estatísticas do convidado, e os outros veem a etiqueta *convidado*.
+- **Criar conta** a partir do perfil liga um e-mail ao mesmo utilizador anónimo (`linkWithCredential`): o uid
+  mantém-se, e com ele o histórico. O `/onboarding` pede então para reservar o nome.
+- Sair como convidado não tem volta (não há como voltar a entrar na mesma sessão), por isso pede confirmação.
+- Em produção é preciso ativar **Anonymous** em *Firebase Console → Authentication → Sign-in method*.
+
 ### Dados no Firestore
 
 | Coleção | Conteúdo |
 |---|---|
-| `profiles/{uid}` | nome de utilizador, avatar, data de criação |
+| `profiles/{uid}` | nome de utilizador, avatar, data de criação, `guest` |
 | `profiles/{uid}/history/{matchId}` | resumo de cada partida do jogador (escrito no fim da partida) |
 | `usernames/{nome}` | índice de unicidade (transação, sem distinguir maiúsculas) |
 | `rooms/{roomId}` | código, jogo, anfitrião, estado |
@@ -107,7 +121,7 @@ pnpm dev               # noutro terminal: web :3000 + servidor :4000
 Localmente não precisas de nenhum projeto Firebase: os emuladores usam o projeto `demo-cardroom`, e os dados
 persistem em `.firebase-data/`.
 
-- **Contas:** cria-as em `/register` com qualquer e-mail.
+- **Contas:** cria-as em `/register` com qualquer e-mail, ou entra como convidado em `/guest`.
 - **E-mails:** os links (entrada por link, recuperação) não são enviados. Aparecem na UI dos emuladores, em
   *Authentication*.
 - **Jogar sozinho:** para testar vários jogadores, abre várias janelas anónimas.

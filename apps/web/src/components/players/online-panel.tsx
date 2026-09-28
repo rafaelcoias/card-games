@@ -10,7 +10,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { browserApi } from '@/lib/auth/client-token';
 import { useRealtime } from '@/lib/realtime/store';
 import { usePolling } from '@/lib/use-polling';
-import { playerHref } from './player-link';
+import { GuestTag, playerHref } from './player-link';
 import { OnlineDot, presenceLabel } from './presence';
 
 const REFRESH_MS = 10_000;
@@ -96,24 +96,35 @@ export function OnlinePanel({ className }: { className?: string }) {
 }
 
 function OnlineRow({ player, isMe }: { player: OnlinePlayer; isMe: boolean }) {
+  const who = (
+    <>
+      <span className="relative shrink-0">
+        <Avatar name={player.username} src={player.avatarUrl} size={32} />
+        <OnlineDot
+          online
+          playing={player.status === 'playing'}
+          className="absolute -bottom-0.5 -right-0.5 size-2.5"
+        />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-medium">
+          {player.username} {player.guest && <GuestTag />} {isMe && <span className="text-subtle">(tu)</span>}
+        </span>
+        <span className="block truncate text-xs text-muted">{presenceLabel(player)}</span>
+      </span>
+    </>
+  );
+  const row = 'flex min-w-0 flex-1 items-center gap-3';
   return (
     <li className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5">
-      <Link href={playerHref(player.username)} className="flex min-w-0 flex-1 items-center gap-3">
-        <span className="relative shrink-0">
-          <Avatar name={player.username} src={player.avatarUrl} size={32} />
-          <OnlineDot
-            online
-            playing={player.status === 'playing'}
-            className="absolute -bottom-0.5 -right-0.5 size-2.5"
-          />
-        </span>
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium">
-            {player.username} {isMe && <span className="text-subtle">(tu)</span>}
-          </span>
-          <span className="block truncate text-xs text-muted">{presenceLabel(player)}</span>
-        </span>
-      </Link>
+      {/* Guests have no public profile to open. */}
+      {player.guest ? (
+        <div className={row}>{who}</div>
+      ) : (
+        <Link href={playerHref(player.username)} className={row}>
+          {who}
+        </Link>
+      )}
       {player.roomCode && !isMe && (
         <Link
           href={`/room/${player.roomCode}`}

@@ -68,3 +68,24 @@ describe('Firebase ID token verification', () => {
     expect(await emulatorVerify(wrongProject)).toBeNull();
   });
 });
+
+describe('guests', () => {
+  it('flags Firebase anonymous sign-ins as guests', async () => {
+    const sign = (provider: string) =>
+      new SignJWT({ firebase: { sign_in_provider: provider } })
+        .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
+        .setSubject('uid-guest')
+        .setIssuer(ISSUER)
+        .setAudience(PROJECT)
+        .setIssuedAt()
+        .setExpirationTime('1h')
+        .sign(privateKey);
+    expect(await verify(await sign('anonymous'))).toMatchObject({
+      userId: 'uid-guest',
+      guest: true,
+      email: null,
+    });
+    expect(await verify(await sign('password'))).toMatchObject({ guest: false });
+    expect((await verify(await token()))?.guest).toBe(false);
+  });
+});

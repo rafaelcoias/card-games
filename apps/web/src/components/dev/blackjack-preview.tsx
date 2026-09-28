@@ -230,6 +230,7 @@ export function BlackjackPreview() {
       ready: true,
       connected: seat.playerId !== 'eva',
       away: false,
+      guest: false,
     }));
     return {
       scene: sceneFromView(`dev-${scenario.label}`, 1, view),

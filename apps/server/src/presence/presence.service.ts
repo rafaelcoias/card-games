@@ -66,7 +66,7 @@ export class PresenceService implements OnApplicationBootstrap, OnModuleDestroy 
       .hset(
         INFO_KEY,
         profile.id,
-        JSON.stringify({ username: profile.username, avatarUrl: profile.avatarUrl }),
+        JSON.stringify({ username: profile.username, avatarUrl: profile.avatarUrl, guest: profile.guest }),
       )
       .zadd(ONLINE_KEY, Date.now() + TTL_MS, profile.id)
       .exec();
@@ -84,7 +84,7 @@ export class PresenceService implements OnApplicationBootstrap, OnModuleDestroy 
     await this.redis.hset(
       INFO_KEY,
       profile.id,
-      JSON.stringify({ username: profile.username, avatarUrl: profile.avatarUrl }),
+      JSON.stringify({ username: profile.username, avatarUrl: profile.avatarUrl, guest: profile.guest }),
     );
   }
 
@@ -136,7 +136,7 @@ export class PresenceService implements OnApplicationBootstrap, OnModuleDestroy 
     ids.forEach((id, i) => {
       const raw = infos[i];
       if (!raw) return;
-      const info = JSON.parse(raw) as { username: string; avatarUrl: string | null };
+      const info = JSON.parse(raw) as { username: string; avatarUrl: string | null; guest?: boolean };
       const roomId = roomIds[i];
       const room = roomId ? roomById.get(roomId) : null;
       const status: PresenceStatus = !room ? 'lobby' : room.status === 'PLAYING' ? 'playing' : 'room';
@@ -144,6 +144,7 @@ export class PresenceService implements OnApplicationBootstrap, OnModuleDestroy 
         id,
         username: info.username,
         avatarUrl: info.avatarUrl,
+        guest: info.guest === true,
         status,
         gameName: room ? (this.registry.get(room.gameId)?.name ?? room.gameId) : null,
         // Private room codes are invitations: never expose them.

@@ -75,7 +75,7 @@ export function MatchHistory({ matches, failed = false, emptyText }: MatchHistor
                     {[...match.players].sort(byResult).map((p, i) => (
                       <Fragment key={p.username}>
                         {i > 0 && ' · '}
-                        <PlayerLink username={p.username} />
+                        <PlayerLink username={p.username} guest={p.guest} />
                         {p.score !== null && (
                           <span className={p.outcome === 'LOSER' ? 'text-danger' : 'text-subtle'}>
                             {' '}

@@ -6,6 +6,8 @@ export const SESSION_COOKIE = '__session';
 export interface Identity {
   userId: string;
   email: string | null;
+  /** Firebase anonymous sign-in: a guest playing under a temporary name. */
+  guest: boolean;
   /** Seconds since epoch. */
   expiresAt: number;
 }
@@ -39,12 +41,19 @@ export function createIdTokenVerifier({ projectId, keys, emulator }: VerifierOpt
       return {
         userId: payload.sub,
         email: typeof payload.email === 'string' ? payload.email : null,
+        guest: signInProvider(payload) === 'anonymous',
         expiresAt: payload.exp,
       };
     } catch {
       return null;
     }
   };
+}
+
+/** How the user signed in (`password`, `emailLink`, `anonymous`…), from Firebase's own claim. */
+function signInProvider(payload: JWTPayload): string | null {
+  const firebase = payload.firebase as { sign_in_provider?: unknown } | undefined;
+  return typeof firebase?.sign_in_provider === 'string' ? firebase.sign_in_provider : null;
 }
 
 export const verifyIdToken = createIdTokenVerifier({

@@ -67,6 +67,43 @@ describe('ProfilesRepository', () => {
   });
 });
 
+describe('guest profiles', () => {
+  it('keep a temporary name that reserves nothing and cannot copy an account’s name', async () => {
+    const [owner, guest, other] = [randomUUID(), randomUUID(), randomUUID()];
+    const taken = unique('owner');
+    await profiles.upsert(owner, { username: taken, avatarUrl: null });
+
+    expect(await profiles.upsertGuest(guest, { username: taken.toUpperCase(), avatarUrl: null })).toBeNull();
+    const name = unique('visita');
+    expect(await profiles.upsertGuest(guest, { username: name, avatarUrl: null })).toMatchObject({
+      username: name,
+      guest: true,
+    });
+    // Nothing reserved: another guest, and later an account, can use the same name.
+    expect((await db.collection('usernames').doc(name.toLowerCase()).get()).exists).toBe(false);
+    expect(await profiles.upsertGuest(other, { username: name, avatarUrl: null })).not.toBeNull();
+    expect(await profiles.findByUsername(name)).toBeNull();
+    // Guests stay out of the player directory.
+    expect((await profiles.search(name.slice(0, 8), 20)).map((p) => p.id)).not.toContain(guest);
+  });
+
+  it('become regular players when they create an account, without touching anyone else’s claim', async () => {
+    const [guest, owner] = [randomUUID(), randomUUID()];
+    const guestName = unique('conv');
+    await profiles.upsertGuest(guest, { username: guestName, avatarUrl: null });
+    // Someone registers the guest's name in the meantime.
+    await profiles.upsert(owner, { username: guestName, avatarUrl: null });
+
+    const chosen = unique('conta');
+    expect(await profiles.upsert(guest, { username: chosen, avatarUrl: null })).toMatchObject({
+      username: chosen,
+      guest: false,
+    });
+    expect((await profiles.findByUsername(chosen))?.id).toBe(guest);
+    expect((await profiles.findByUsername(guestName))?.id).toBe(owner);
+  });
+});
+
 describe('player directory', () => {
   it('finds players by case-insensitive username prefix and by activity', async () => {
     const tag = randomUUID().slice(0, 6);
@@ -112,8 +149,8 @@ describe('MatchesRepository', () => {
       config: { turnTimeoutMs: 30_000 },
       startedAt: new Date(),
       players: [
-        { profileId: p1, username: 'ana', seat: 0 },
-        { profileId: p2, username: 'rui', seat: 1 },
+        { profileId: p1, username: 'ana', seat: 0, guest: false },
+        { profileId: p2, username: 'rui', seat: 1, guest: false },
       ],
     });
     for (let seq = 1; seq <= 12; seq++) {
@@ -143,16 +180,32 @@ describe('MatchesRepository', () => {
 
     const match = (await db.collection('matches').doc(matchId).get()).data();
     expect(match?.players).toEqual([
-      { profileId: p1, username: 'ana', seat: 0, finalPosition: 2, outcome: 'LOSER', score: null },
-      { profileId: p2, username: 'rui', seat: 1, finalPosition: 1, outcome: 'WINNER', score: null },
+      {
+        profileId: p1,
+        username: 'ana',
+        seat: 0,
+        finalPosition: 2,
+        outcome: 'LOSER',
+        score: null,
+        guest: false,
+      },
+      {
+        profileId: p2,
+        username: 'rui',
+        seat: 1,
+        finalPosition: 1,
+        outcome: 'WINNER',
+        score: null,
+        guest: false,
+      },
     ]);
 
     const history = await matches.historyFor(p2, 10);
     expect(history).toHaveLength(1);
     expect(history[0]).toMatchObject({ id: matchId, gameId: 'mexicana', position: 1, outcome: 'WINNER' });
     expect(history[0]?.players).toEqual([
-      { username: 'ana', position: 2, outcome: 'LOSER', score: null },
-      { username: 'rui', position: 1, outcome: 'WINNER', score: null },
+      { username: 'ana', position: 2, outcome: 'LOSER', score: null, guest: false },
+      { username: 'rui', position: 1, outcome: 'WINNER', score: null, guest: false },
     ]);
     expect((await db.collection('rooms').doc(roomId).get()).get('status')).toBe('OPEN');
 
@@ -184,9 +237,9 @@ describe('MatchesRepository', () => {
       config: { maxPoints: 5 },
       startedAt: new Date(),
       players: [
-        { profileId: p1, username: 'eva', seat: 0 },
-        { profileId: p2, username: 'rui', seat: 1 },
-        { profileId: p3, username: 'ze', seat: 2 },
+        { profileId: p1, username: 'eva', seat: 0, guest: false },
+        { profileId: p2, username: 'rui', seat: 1, guest: false },
+        { profileId: p3, username: 'ze', seat: 2, guest: false },
       ],
     });
     await matches.finish(
@@ -201,7 +254,13 @@ describe('MatchesRepository', () => {
 
     const [entry] = await matches.historyFor(p1, 10);
     expect(entry).toMatchObject({ gameId: 'fodinha', position: null, outcome: 'LOSER', score: 5 });
-    expect(entry?.players).toContainEqual({ username: 'rui', position: null, outcome: 'SURVIVOR', score: 1 });
+    expect(entry?.players).toContainEqual({
+      username: 'rui',
+      position: null,
+      outcome: 'SURVIVOR',
+      score: 1,
+      guest: false,
+    });
     // Survivors neither win nor lose; reaching the limit is a loss.
     expect((await profiles.find(p1))?.stats.byGame.fodinha).toEqual({ played: 1, wins: 0, losses: 1 });
     expect((await profiles.find(p2))?.stats.byGame.fodinha).toEqual({ played: 1, wins: 0, losses: 0 });
@@ -242,9 +301,9 @@ describe('MatchesRepository', () => {
       seed: 'ef'.repeat(32),
       config: { decks: 6 },
       startedAt: new Date(),
-      players: [{ profileId: host, username: 'ana', seat: 0 }],
+      players: [{ profileId: host, username: 'ana', seat: 0, guest: false }],
     });
-    await matches.addPlayer(matchId, { profileId: late, username: 'eva', seat: 3 });
+    await matches.addPlayer(matchId, { profileId: late, username: 'eva', seat: 3, guest: false });
 
     const match = (await db.collection('matches').doc(matchId).get()).data();
     expect(match?.playerIds).toEqual([host, late]);

@@ -150,6 +150,15 @@ export function LoginForm({ next }: { next: string }) {
           Criar conta
         </Link>
       </p>
+      <div className="flex items-center gap-3 text-xs uppercase tracking-[0.14em] text-subtle">
+        <span className="h-px flex-1 bg-line" /> ou <span className="h-px flex-1 bg-line" />
+      </div>
+      <Link
+        href={`/guest?next=${encodeURIComponent(next)}`}
+        className="inline-flex h-12 items-center justify-center rounded-xl border border-line-strong font-semibold hover:bg-white/5"
+      >
+        Jogar como convidado
+      </Link>
     </form>
   );
 }

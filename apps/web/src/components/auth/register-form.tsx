@@ -1,6 +1,11 @@
 'use client';
 
-import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import {
+  createUserWithEmailAndPassword,
+  EmailAuthProvider,
+  linkWithCredential,
+  sendEmailVerification,
+} from 'firebase/auth';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -26,7 +31,14 @@ export function RegisterForm() {
     setLoading(true);
     setError(null);
     try {
-      const { user } = await createUserWithEmailAndPassword(firebaseAuth(), email.trim(), password);
+      const auth = firebaseAuth();
+      await auth.authStateReady();
+      const guest = auth.currentUser?.isAnonymous ? auth.currentUser : null;
+      // A guest keeps their identity (and history): the account is attached to it.
+      const { user } = guest
+        ? await linkWithCredential(guest, EmailAuthProvider.credential(email.trim(), password))
+        : await createUserWithEmailAndPassword(auth, email.trim(), password);
+      if (guest) await user.getIdToken(true); // the session must stop saying "guest"
       // Confirmation e-mail is courtesy only: playing does not require it.
       void sendEmailVerification(user, { url: new URL('/lobby', publicEnv.siteUrl).toString() }).catch(
         () => undefined,

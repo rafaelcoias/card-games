@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { SESSION_COOKIE, verifyIdToken } from '@/lib/auth/id-token';
 
 const PROTECTED = ['/lobby', '/room', '/profile', '/players', '/onboarding'];
-const GUEST_ONLY = ['/register', '/forgot-password'];
+/** For visitors without an account (guests may still open /register to create one). */
+const SIGNED_OUT_ONLY = ['/register', '/forgot-password', '/guest'];
 
 const matches = (pathname: string, prefixes: string[]) =>
   prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
@@ -15,7 +16,8 @@ const matches = (pathname: string, prefixes: string[]) =>
  */
 export async function proxy(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
-  const signedIn = token ? (await verifyIdToken(token)) !== null : false;
+  const identity = token ? await verifyIdToken(token) : null;
+  const signedIn = identity !== null;
 
   const { pathname, search } = request.nextUrl;
   if (!signedIn && matches(pathname, PROTECTED)) {
@@ -23,7 +25,8 @@ export async function proxy(request: NextRequest) {
     url.searchParams.set('next', `${pathname}${search}`);
     return NextResponse.redirect(url);
   }
-  if (signedIn && matches(pathname, GUEST_ONLY)) {
+  const upgrading = identity?.guest === true && pathname === '/register';
+  if (signedIn && !upgrading && matches(pathname, SIGNED_OUT_ONLY)) {
     return NextResponse.redirect(new URL('/lobby', request.url));
   }
   return NextResponse.next();
