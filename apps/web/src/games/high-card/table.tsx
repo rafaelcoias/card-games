@@ -11,13 +11,16 @@ import { gameFeed } from '@/lib/realtime/game-feed';
 import { TimeWarning } from '../shared/time-warning';
 import { TurnRing } from '../shared/turn-ring';
 import { useLatestGameView } from '../shared/use-game-view';
-import { useTableLayout } from '../shared/use-media';
+import { useTableLayout, useViewport } from '../shared/use-media';
 import type { GameTableProps } from '../types';
 
 /** Minimal table for the "highest card" test game. */
 export function HighCardTable({ room, selfId, sendAction }: GameTableProps) {
   const message = useLatestGameView<HighCardView, HighCardAction>();
   const layout = useTableLayout();
+  const { height } = useViewport();
+  // As big as the screen's height allows.
+  const cardSize = layout === 'desktop' ? (height >= 950 ? 'xl' : 'lg') : height >= 780 ? 'ml' : 'md';
   const [sending, setSending] = useState(false);
   if (!message) return <div className="felt h-full" />;
 
@@ -91,12 +94,12 @@ export function HighCardTable({ room, selfId, sendAction }: GameTableProps) {
         </p>
         <CardFan
           items={view.hand}
-          size={layout === 'desktop' ? 'lg' : 'md'}
+          size={cardSize}
           getKey={(c) => c.id}
           renderItem={(card, placement) => (
             <MotionCard
               id={card.id}
-              size={layout === 'desktop' ? 'lg' : 'md'}
+              size={cardSize}
               layoutId={`hc-${card.id}`}
               rotate={placement.rotate}
               interactive={playable.size > 0}

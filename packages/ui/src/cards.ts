@@ -1,10 +1,18 @@
 import { parseCardId, type CardId } from '@cardroom/game-core';
 
-export type CardSize = 'xs' | 'sm' | 'ms' | 'md' | 'ml' | 'lg';
+export type CardSize = 'xs' | 'sm' | 'ms' | 'md' | 'ml' | 'lg' | 'xl';
 
 /** Poker proportion 2.5 × 3.5. `xs` is used for opponents' table cards on phones. */
 export const CARD_RATIO = 250 / 350;
-export const CARD_WIDTH: Record<CardSize, number> = { xs: 40, sm: 56, ms: 68, md: 84, ml: 100, lg: 120 };
+export const CARD_WIDTH: Record<CardSize, number> = {
+  xs: 40,
+  sm: 56,
+  ms: 68,
+  md: 84,
+  ml: 100,
+  lg: 120,
+  xl: 140,
+};
 
 export function cardHeight(size: CardSize): number {
   return Math.round(CARD_WIDTH[size] / CARD_RATIO);

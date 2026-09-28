@@ -23,11 +23,29 @@ export function useTableLayout(): TableLayout {
   return desktop ? 'desktop' : tablet ? 'tablet' : 'phone';
 }
 
-export type ViewportHeight = 'tall' | 'medium' | 'short';
+export interface Viewport {
+  width: number;
+  height: number;
+}
 
-/** Vertical room available to the table (phones differ a lot here). */
-export function useViewportHeight(): ViewportHeight {
-  const tall = useMediaQuery('(min-height: 780px)');
-  const medium = useMediaQuery('(min-height: 680px)');
-  return tall ? 'tall' : medium ? 'medium' : 'short';
+/** Height of the match header above every table (`GameStage`). */
+export const STAGE_HEADER = 48;
+
+let cachedViewport: Viewport = { width: 0, height: 0 };
+
+/** The window's inner size, following resizes (0 × 0 during SSR). Tables fit their cards to it. */
+export function useViewport(): Viewport {
+  return useSyncExternalStore(
+    (onChange) => {
+      window.addEventListener('resize', onChange);
+      return () => window.removeEventListener('resize', onChange);
+    },
+    () => {
+      const { innerWidth: width, innerHeight: height } = window;
+      if (cachedViewport.width !== width || cachedViewport.height !== height)
+        cachedViewport = { width, height };
+      return cachedViewport;
+    },
+    () => cachedViewport,
+  );
 }

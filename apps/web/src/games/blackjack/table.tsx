@@ -17,7 +17,7 @@ import { playSound } from '../shared/sounds';
 import { TimeWarning } from '../shared/time-warning';
 import { useDirector, type Choreography, type TimerSnapshot } from '../shared/use-director';
 import { useElementSize } from '../shared/use-element-size';
-import { useTableLayout, type TableLayout } from '../shared/use-media';
+import { useTableLayout, useViewport, type TableLayout, type Viewport } from '../shared/use-media';
 import type { GameTableProps } from '../types';
 import { ActionBar, BettingPanel, InsurancePanel } from './controls';
 import { feltPrint } from './copy';
@@ -40,11 +40,27 @@ export interface Sizes {
 
 export function useBlackjackSizes(): Sizes {
   const layout = useTableLayout();
-  if (layout === 'desktop')
+  const viewport = useViewport();
+  return useMemo(() => blackjackSizes(layout, viewport), [layout, viewport]);
+}
+
+/** Cards grow with the screen: seven places must still fit across the half-moon. */
+export function blackjackSizes(layout: TableLayout, { width, height }: Viewport): Sizes {
+  if (layout === 'desktop') {
+    if (width >= 1700 && height >= 1000)
+      return { layout, seatCard: 'md', selfCard: 'ml', dealerCard: 'lg', shoeCard: 'sm' };
+    if (width >= 1360 && height >= 850)
+      return { layout, seatCard: 'ms', selfCard: 'md', dealerCard: 'ml', shoeCard: 'xs' };
     return { layout, seatCard: 'sm', selfCard: 'ms', dealerCard: 'md', shoeCard: 'xs' };
-  if (layout === 'tablet')
-    return { layout, seatCard: 'xs', selfCard: 'sm', dealerCard: 'sm', shoeCard: 'xs' };
-  return { layout, seatCard: 'xs', selfCard: 'ms', dealerCard: 'sm', shoeCard: 'xs' };
+  }
+  if (layout === 'tablet') {
+    return height >= 1000
+      ? { layout, seatCard: 'sm', selfCard: 'md', dealerCard: 'md', shoeCard: 'xs' }
+      : { layout, seatCard: 'xs', selfCard: 'sm', dealerCard: 'sm', shoeCard: 'xs' };
+  }
+  return height >= 780
+    ? { layout, seatCard: 'xs', selfCard: 'md', dealerCard: 'ms', shoeCard: 'xs' }
+    : { layout, seatCard: 'xs', selfCard: 'ms', dealerCard: 'sm', shoeCard: 'xs' };
 }
 
 const SPEECH_MS = 2000;
@@ -236,7 +252,8 @@ export function BlackjackTableView({
                 name={nameOf(selfId)}
                 isSelf
                 timer={seatTimer(me)}
-                cardSize={sizes.selfCard}
+                // Three or four split hands only fit across a phone a size smaller.
+                cardSize={me.hands.length > 2 ? 'ms' : sizes.selfCard}
                 variant="self"
               />
             )}

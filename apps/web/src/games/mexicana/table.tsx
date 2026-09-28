@@ -3,7 +3,7 @@
 import type { Card, CardId } from '@cardroom/game-core';
 import type { MexicanaAction } from '@cardroom/mexicana';
 import type { RoomPlayer } from '@cardroom/shared';
-import { type CardSize } from '@cardroom/ui';
+import { rankLabel } from '@cardroom/ui';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Avatar } from '@/components/ui/avatar';
@@ -13,47 +13,29 @@ import { toast } from '@/lib/toast';
 import { playSound } from '../shared/sounds';
 import { TimeWarning } from '../shared/time-warning';
 import { TurnRing, useSecondsLeft } from '../shared/turn-ring';
-import { useTableLayout, useViewportHeight, type TableLayout } from '../shared/use-media';
+import { useTableLayout, useViewport, type TableLayout } from '../shared/use-media';
 import type { GameTableProps } from '../types';
 import { CenterArea } from './center';
 import { indexActions, ordinal, restrictionHint, selectionKey, sortHand } from './copy';
 import { Hand } from './hand';
+import { fitMexicanaSizes, type Sizes } from './layout';
 import { OpponentSeat } from './opponent-seat';
 import type { Fx, Scene } from './scene';
 import { TableCards } from './table-cards';
 import { useDirector, type TimerSnapshot } from './use-director';
 
-interface Sizes {
-  hand: CardSize;
-  selfTable: CardSize;
-  opponents: CardSize;
-  center: CardSize;
-}
-
-/**
- * Card sizes per screen. Phones use every bit of height they have: the hand
- * (what you read most) gets the biggest cards, opponents' table cards grow
- * when there are few of them to fit in one row.
- */
-function useTableSizes(layout: TableLayout, opponentCount: number): Sizes {
-  const height = useViewportHeight();
-  const fewOpponents = opponentCount <= 2;
-  if (layout === 'desktop') return { hand: 'lg', selfTable: 'md', opponents: 'sm', center: 'md' };
-  if (layout === 'tablet') return { hand: 'ml', selfTable: 'md', opponents: 'sm', center: 'md' };
-  const opponents = fewOpponents ? 'sm' : 'xs';
-  switch (height) {
-    case 'tall':
-      return { hand: 'ml', selfTable: 'md', opponents, center: 'md' };
-    case 'medium':
-      return { hand: 'md', selfTable: 'ms', opponents, center: 'ms' };
-    case 'short':
-      return { hand: 'md', selfTable: 'sm', opponents: 'xs', center: 'sm' };
-  }
+/** Card sizes fitted to the screen (see `fitMexicanaSizes`). */
+export function useMexicanaSizes(layout: TableLayout, opponentCount: number): Sizes {
+  const viewport = useViewport();
+  return useMemo(
+    () => fitMexicanaSizes(viewport, opponentCount, layout === 'phone'),
+    [viewport, opponentCount, layout],
+  );
 }
 
 export function MexicanaTable({ room, selfId, sendAction }: GameTableProps) {
   const layout = useTableLayout();
-  const sizes = useTableSizes(layout, room.players.length - 1);
+  const sizes = useMexicanaSizes(layout, room.players.length - 1);
   const players = useMemo(() => new Map(room.players.map((p) => [p.id, p])), [room.players]);
   const nameOf = useCallback(
     (id: string) => (id === selfId ? 'Tu' : (players.get(id)?.username ?? 'Alguém')),
@@ -127,7 +109,7 @@ export function MexicanaTable({ room, selfId, sendAction }: GameTableProps) {
   }
 
   return (
-    <TableView
+    <MexicanaTableView
       scene={scene}
       selfId={selfId}
       players={players}
@@ -144,7 +126,7 @@ export function MexicanaTable({ room, selfId, sendAction }: GameTableProps) {
   );
 }
 
-interface TableViewProps {
+export interface MexicanaTableViewProps {
   scene: Scene;
   selfId: string;
   players: Map<string, RoomPlayer>;
@@ -159,7 +141,7 @@ interface TableViewProps {
   sendAction: GameTableProps['sendAction'];
 }
 
-function TableView({
+export function MexicanaTableView({
   scene,
   selfId,
   players,
@@ -172,7 +154,7 @@ function TableView({
   skipped,
   nameOf,
   sendAction,
-}: TableViewProps) {
+}: MexicanaTableViewProps) {
   const index = useMemo(() => indexActions(validActions), [validActions]);
   // Selection survives other players' moves during the simultaneous choosing phase,
   // but resets for every new turn decision while playing.
@@ -231,6 +213,33 @@ function TableView({
       return;
     }
     if (selectionPlayable) void send({ type: 'PLAY_CARDS', cardIds: selectedIds });
+  };
+
+  // Playable cards of the selected rank, the selected ones first: how many can go down together.
+  const selectedRank = !choosing && selectedIds[0] ? cardRank(selectedIds[0]) : undefined;
+  const sameRank = selectedRank
+    ? [
+        ...selectedIds,
+        ...hand
+          .filter(
+            (c) => c.card.rank === selectedRank && index.playable.has(c.card.id) && !selected.has(c.card.id),
+          )
+          .map((c) => c.card.id),
+      ]
+    : [];
+  const playCount = (count: number) => {
+    const cardIds = sameRank.slice(0, count);
+    if (index.plays.has(selectionKey(cardIds))) void send({ type: 'PLAY_CARDS', cardIds });
+  };
+
+  /**
+   * Tapping a selected card again plays the selection only when nothing could
+   * join it; with more cards of that rank in hand it deselects instead, so a
+   * second tap that lands on the same (overlapped) card never cuts a play short.
+   */
+  const tap = (id: string) => {
+    if (choosing || !selected.has(id) || sameRank.length > selectedIds.length) toggle(id);
+    else submit();
   };
 
   const isMyTurn = myTurnIn(scene, selfId, validActions);
@@ -326,7 +335,7 @@ function TableView({
             selected={selected}
             selectable={selectable}
             deal={deal(selfId)}
-            reclick={choosing ? 'toggle' : 'submit'}
+            onTap={tap}
             onToggle={toggle}
             onSubmit={submit}
           />
@@ -340,6 +349,16 @@ function TableView({
             chosen={!!selfSeat.hasChosenFaceUp}
             selectedCount={selectedIds.length}
             selectionPlayable={selectionPlayable}
+            count={
+              handLayerActive && selectedRank && sameRank.length > 1
+                ? {
+                    rank: selectedRank,
+                    available: sameRank.length,
+                    selected: selectedIds.length,
+                    onPlay: playCount,
+                  }
+                : null
+            }
             canPickUp={index.canPickUp}
             mustTakeFaceUp={mustTakeFaceUp}
             tableLayer={tableLayer}
@@ -381,6 +400,12 @@ interface ActionBarProps {
   chosen: boolean;
   selectedCount: number;
   selectionPlayable: boolean;
+  /**
+   * Several cards of the selected rank can go down together: big buttons pick
+   * how many (in place of Jogar), so the play never depends on tapping small,
+   * overlapping cards precisely.
+   */
+  count: CountChoice | null;
   canPickUp: boolean;
   mustTakeFaceUp: boolean;
   tableLayer: 'faceUp' | 'faceDown' | null;
@@ -400,6 +425,7 @@ function ActionBar({
   chosen,
   selectedCount,
   selectionPlayable,
+  count,
   canPickUp,
   mustTakeFaceUp,
   tableLayer,
@@ -419,6 +445,7 @@ function ActionBar({
   else if (canPickUp) message = 'Não tens jogada válida — apanha a pilha';
   else if (mustTakeFaceUp) message = 'Sem jogada — escolhe a visível que levas com a pilha';
   else if (tableLayer === 'faceDown') message = 'Vira uma carta escondida — às cegas!';
+  else if (count) message = countQuestion(count.rank);
   else if (tableLayer === 'faceUp')
     message = `Joga uma carta visível · ${restrictionHint(scene.restriction, scene.effectiveRank)}`;
   else message = restrictionHint(scene.restriction, scene.effectiveRank);
@@ -435,7 +462,7 @@ function ActionBar({
           className={clsx('truncate text-sm font-semibold', isMyTurn ? 'text-gold' : 'text-ivory')}
           role="status"
         >
-          {isMyTurn && !canPickUp && !mustTakeFaceUp ? 'A tua vez · ' : ''}
+          {isMyTurn && !canPickUp && !mustTakeFaceUp && !count ? 'A tua vez · ' : ''}
           {message}
         </p>
         {showTimer && (
@@ -454,11 +481,40 @@ function ActionBar({
           Apanhar a pilha
         </Button>
       )}
-      {isMyTurn && !canPickUp && !mustTakeFaceUp && !tableLayer && (
+      {isMyTurn && count && (
+        <div className="flex shrink-0 gap-1.5" role="group" aria-label="Quantas cartas jogas">
+          {Array.from({ length: count.available }, (_, i) => i + 1).map((n) => (
+            <Button
+              key={n}
+              variant={n === count.selected ? 'primary' : 'secondary'}
+              className="min-w-10 px-0 text-base tabular-nums sm:min-w-12"
+              disabled={busy}
+              onClick={() => count.onPlay(n)}
+              aria-label={`Jogar ${n}`}
+            >
+              {n}
+            </Button>
+          ))}
+        </div>
+      )}
+      {isMyTurn && !canPickUp && !mustTakeFaceUp && !tableLayer && !count && (
         <Button onClick={onSubmit} disabled={!selectionPlayable || busy}>
           {selectedCount > 1 ? `Jogar ${selectedCount}` : 'Jogar'}
         </Button>
       )}
     </div>
   );
+}
+
+interface CountChoice {
+  rank: string;
+  /** Playable cards of that rank in hand. */
+  available: number;
+  selected: number;
+  onPlay: (count: number) => void;
+}
+
+function countQuestion(rank: string): string {
+  if (rank === 'JOKER') return 'Quantos Jokers?';
+  return `Quantas cartas de ${/^\d+$/.test(rank) ? rank : rankLabel(rank)}?`;
 }

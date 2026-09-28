@@ -127,7 +127,8 @@ persistem em `.firebase-data/`.
 | `pnpm firebase:deploy-rules` | Publica `firestore.rules` e os índices no projeto Firebase |
 | `pnpm cards:generate` | Regenera o baralho SVG |
 
-A galeria do baralho (54 cartas + verso) está em **`/dev/cards`**; os estados fixos da mesa da Fodinha (às
+A galeria do baralho (54 cartas + verso) está em **`/dev/cards`**; os estados fixos da mesa da Mexicana
+(escolher visíveis, a jogar, várias iguais, visíveis, às cegas, 6 jogadores) estão em **`/dev/mexicana`**; os estados fixos da mesa da Fodinha (às
 cegas, apostas, empate, resumo, fim, 10 jogadores) estão em **`/dev/fodinha`**, e os do Blackjack (apostas, dica, separação em 3 mãos, seguro, even money,
 peek, banca, liquidação, baralhar, mesa cheia, recompra, entrar a meio) em **`/dev/blackjack`**.
 

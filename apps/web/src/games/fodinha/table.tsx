@@ -10,7 +10,7 @@ import { playSound } from '../shared/sounds';
 import { TimeWarning } from '../shared/time-warning';
 import { useDirector, type Choreography, type TimerSnapshot } from '../shared/use-director';
 import { useElementSize } from '../shared/use-element-size';
-import { useMediaQuery, useTableLayout, useViewportHeight, type TableLayout } from '../shared/use-media';
+import { useTableLayout, useViewport, type TableLayout } from '../shared/use-media';
 import type { GameTableProps } from '../types';
 import { plural, sortHand } from './copy';
 import { tableGeometry, type Box } from './layout';
@@ -39,32 +39,35 @@ const SEAT_BOX: Record<SeatVariant, Box> = {
 
 /** Up to 10 seats: compact seats and smaller cards as the table fills up (UI §1). */
 export function useFodinhaSizes(layout: TableLayout, playerCount: number): Sizes {
-  const height = useViewportHeight();
-  const roomy = useMediaQuery('(min-height: 900px)');
+  const { height } = useViewport();
+  return useMemo(() => fodinhaSizes(layout, height, playerCount), [layout, height, playerCount]);
+}
+
+/**
+ * Cards as big as the screen's height allows: the trick grows on roomy
+ * screens (less with more than six players), the hand up to `xl`.
+ */
+export function fodinhaSizes(layout: TableLayout, height: number, playerCount: number): Sizes {
   const opponents = playerCount - 1;
   const seat: SeatVariant =
     opponents > (layout === 'desktop' ? 6 : layout === 'tablet' ? 4 : 2) ? 'compact' : 'regular';
-  const trick: CardSize =
-    layout === 'desktop'
-      ? playerCount <= 6
-        ? 'md'
-        : 'sm'
-      : layout === 'tablet' || playerCount <= 6
-        ? 'sm'
-        : 'xs';
-  const hand: CardSize =
-    layout === 'desktop'
-      ? roomy
-        ? 'lg'
-        : 'ml'
-      : layout === 'tablet'
-        ? 'ml'
-        : height === 'tall'
-          ? 'md'
-          : height === 'medium'
-            ? 'ms'
-            : 'sm';
-  const blind: CardSize = layout === 'phone' ? (height === 'short' ? 'xs' : 'sm') : hand;
+  const few = playerCount <= 6;
+  let trick: CardSize;
+  let hand: CardSize;
+  let blind: CardSize;
+  if (layout === 'desktop') {
+    trick = few ? (height >= 1000 ? 'lg' : height >= 820 ? 'ml' : 'md') : height >= 1000 ? 'md' : 'sm';
+    hand = height >= 1000 ? 'xl' : height >= 880 ? 'lg' : 'ml';
+    blind = hand;
+  } else if (layout === 'tablet') {
+    trick = few ? 'md' : 'sm';
+    hand = height >= 1000 ? 'lg' : 'ml';
+    blind = hand;
+  } else {
+    trick = few ? (height >= 680 ? 'ms' : 'sm') : 'xs';
+    hand = height >= 780 ? 'ml' : height >= 680 ? 'md' : 'ms';
+    blind = height >= 680 ? 'ms' : 'sm';
+  }
   return { seat, opponentCard: seat === 'compact' ? 'xs' : 'sm', trick, hand, blind };
 }
 

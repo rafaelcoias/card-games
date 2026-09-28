@@ -12,7 +12,9 @@ import { describe, expect, it } from 'vitest';
 import { chipsFor, feltPrint, outcomeLabel, totalLabel } from './copy';
 import { dealerLine } from './dealer-lines';
 import { tableGeometry, visualSlot } from './layout';
+import { fodinhaSizes } from '../fodinha/table';
 import { ANCHORS, applyEvent, sceneFromView, type Scene } from './scene';
+import { blackjackSizes } from './table';
 
 /** The first cards of the shoe, in dealing order. */
 const stacked =
@@ -178,5 +180,32 @@ describe('table copy and layout', () => {
     expect(right!.x).toBeGreaterThan(middle!.x);
     expect(left!.x).toBeLessThan(middle!.x);
     expect(middle!.y).toBeGreaterThan(right!.y);
+  });
+});
+
+describe('card sizes', () => {
+  it('blackjack cards grow with the screen', () => {
+    expect(blackjackSizes('desktop', { width: 1920, height: 1080 })).toMatchObject({
+      seatCard: 'md',
+      dealerCard: 'lg',
+    });
+    expect(blackjackSizes('desktop', { width: 1440, height: 900 })).toMatchObject({
+      seatCard: 'ms',
+      selfCard: 'md',
+    });
+    expect(blackjackSizes('desktop', { width: 1280, height: 720 })).toMatchObject({
+      seatCard: 'sm',
+      selfCard: 'ms',
+    });
+    expect(blackjackSizes('phone', { width: 390, height: 844 }).selfCard).toBe('md');
+    expect(blackjackSizes('phone', { width: 360, height: 640 }).selfCard).toBe('ms');
+  });
+
+  it('fodinha trick and hand follow the height, smaller with more than six players', () => {
+    expect(fodinhaSizes('desktop', 1080, 4)).toMatchObject({ trick: 'lg', hand: 'xl' });
+    expect(fodinhaSizes('desktop', 900, 4)).toMatchObject({ trick: 'ml', hand: 'lg' });
+    expect(fodinhaSizes('desktop', 1080, 9)).toMatchObject({ trick: 'md', seat: 'compact' });
+    expect(fodinhaSizes('phone', 844, 4)).toMatchObject({ trick: 'ms', hand: 'ml' });
+    expect(fodinhaSizes('phone', 640, 10)).toMatchObject({ trick: 'xs', hand: 'ms' });
   });
 });

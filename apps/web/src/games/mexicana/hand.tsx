@@ -16,8 +16,8 @@ export interface HandProps {
   /** Cards that may be (part of) a legal selection; others are dimmed. `null` = not your decision. */
   selectable: ReadonlySet<string> | null;
   deal: { seatIndex: number; seatCount: number } | null;
-  /** What tapping an already selected card does: play the selection, or deselect it. */
-  reclick: 'submit' | 'toggle';
+  /** A tap or click on a selectable card (the table decides whether it selects, deselects or plays). */
+  onTap: (cardId: string) => void;
   onToggle: (cardId: string) => void;
   onSubmit: () => void;
 }
@@ -25,10 +25,10 @@ export interface HandProps {
 /**
  * The player's hand as a fan that tightens to fit the screen width; only when
  * even the tightest fan does not fit does it become a flat, scrollable strip.
- * Tap/click or Enter selects, tapping a selected card again (or Space) plays;
- * arrows move focus between cards.
+ * Tap/click follows the table's rule (`onTap`); on the keyboard Enter selects,
+ * Space plays and arrows move focus between cards.
  */
-export function Hand({ cards, size, selected, selectable, deal, reclick, onToggle, onSubmit }: HandProps) {
+export function Hand({ cards, size, selected, selectable, deal, onTap, onToggle, onSubmit }: HandProps) {
   const anchorRef = useAnchorRef<HTMLDivElement>(ANCHORS.selfHand);
   const containerRef = useRef<HTMLDivElement>(null);
   const [measureRef, measured] = useElementWidth<HTMLDivElement>();
@@ -115,9 +115,7 @@ export function Hand({ cards, size, selected, selectable, deal, reclick, onToggl
                           : 'disabled'
                   }
                   onClick={() => {
-                    if (!isSelectable) return;
-                    if (isSelected && reclick === 'submit') onSubmit();
-                    else onToggle(card.id);
+                    if (isSelectable) onTap(card.id);
                   }}
                   onKeyDown={onKeyDown(card.id)}
                 />

@@ -19,7 +19,7 @@ const VISIBLE_PILE = 7;
 
 export function CenterArea({ scene, size, ticker }: { scene: Scene; size: CardSize; ticker: string | null }) {
   return (
-    <div className="relative flex flex-col items-center gap-3">
+    <div className="relative flex flex-col items-center">
       <Ticker text={ticker} />
       <div className="flex items-end justify-center gap-6 sm:gap-10">
         <DrawPile
@@ -166,9 +166,13 @@ function BurnCounter({ count, size }: { count: number; size: CardSize }) {
   );
 }
 
+/** Floats above the piles: announcements come and go without taking room from the cards. */
 function Ticker({ text }: { text: string | null }) {
   return (
-    <div className="h-7" aria-live="polite">
+    <div
+      className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 -translate-x-1/2 whitespace-nowrap"
+      aria-live="polite"
+    >
       <AnimatePresence mode="wait">
         {text && (
           <motion.p

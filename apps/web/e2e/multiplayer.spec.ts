@@ -46,7 +46,8 @@ async function takeTurn(page: Page): Promise<boolean> {
   const playableHand = page.locator('[data-hand-card] [role="button"]:has([data-card-state="playable"])');
   if ((await playableHand.count()) > 0) {
     await playableHand.first().dispatchEvent('click'); // select
-    await page.getByRole('button', { name: /^Jogar/ }).click();
+    // "Jogar", or "Jogar 1" when the count picker offers more of that rank.
+    await page.getByRole('button', { name: /^Jogar( 1)?$/ }).click();
     return true;
   }
   // Table cards: play one, or (no face-up card playable) take one along with the pile.
