@@ -1,7 +1,7 @@
 import { createSeededRng, type CardId } from '@cardroom/game-core';
 import { describe, expect, it } from 'vitest';
 import { mexicana, mexicanaActionSchema, mexicanaConfigSchema } from './module';
-import { buildState, current, eventTypes, expectError, expectOk, ids, play } from './test-utils';
+import { buildState, card, current, eventTypes, expectError, expectOk, ids, play } from './test-utils';
 import type { MexicanaState } from './types';
 
 const config = mexicanaConfigSchema.parse({});
@@ -231,11 +231,13 @@ describe('layers', () => {
 
   it('after picking up, the hand must be emptied before returning to the table', () => {
     const state = buildState({
-      players: { p1: { faceUp: ['4H'] }, p2: { hand: ['6H', '6C'] } },
+      players: { p1: { faceUp: ['4H', '9C'] }, p2: { hand: ['6H', '6C'] } },
       discard: ['KS'],
     });
-    const next = expectOk(mexicana.applyAction(state, { type: 'PICK_UP_PILE' }, 'p1')).state;
-    const back = { ...next, currentIndex: 0 };
+    const next = expectOk(
+      mexicana.applyAction(state, { type: 'PICK_UP_PILE', faceUpCardId: '9C' }, 'p1'),
+    ).state;
+    const back = { ...next, currentIndex: 0, discardPile: [card('QD')] };
     expect(mexicana.getValidActions(back, 'p1')).toEqual([{ type: 'PLAY_CARDS', cardIds: ['KS'] }]);
   });
 });
@@ -315,6 +317,9 @@ describe('module metadata', () => {
     expect(mexicanaActionSchema.safeParse({ type: 'PLAY_CARDS', cardIds: ['ZZ'] }).success).toBe(false);
     expect(mexicanaActionSchema.safeParse({ type: 'PLAY_FACE_DOWN', position: 3 }).success).toBe(false);
     expect(mexicanaActionSchema.safeParse({ type: 'PICK_UP_PILE', extra: 1 }).success).toBe(false);
+    expect(mexicanaActionSchema.safeParse({ type: 'PICK_UP_PILE', faceUpCardId: 'ZZ' }).success).toBe(false);
+    expect(mexicanaActionSchema.safeParse({ type: 'PICK_UP_PILE', faceUpCardId: '4H' }).success).toBe(true);
+    expect(mexicanaActionSchema.safeParse({ type: 'PICK_UP_PILE' }).success).toBe(true);
     expect(mexicanaActionSchema.safeParse({ type: 'PLAY_CARDS', cardIds: ['10H', 'JK2'] }).success).toBe(
       true,
     );

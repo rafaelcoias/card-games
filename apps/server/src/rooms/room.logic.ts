@@ -1,7 +1,7 @@
 import { outcomeForPosition } from '@cardroom/game-core';
 import { ErrorCode, type ChatMessage, type MatchResult, type RoomState } from '@cardroom/shared';
 import { AppError } from '../common/app-error';
-import { CHAT_HISTORY, type RoomMember, type RoomRecord } from './room.model';
+import { CHAT_HISTORY, type RoomMember, type RoomRecord, type SessionRecord } from './room.model';
 
 /** Pure room rules. The service wraps them with locking, persistence and emission. */
 
@@ -32,8 +32,13 @@ function lowestFreeSeat(room: RoomRecord): number {
   return seat;
 }
 
+/** Rooms in the lobby take players, and so do running SESSION tables (they sit down mid-session). */
+export function acceptsPlayers(room: RoomRecord): boolean {
+  return room.status === 'OPEN' || (room.status === 'PLAYING' && room.lifecycle === 'SESSION');
+}
+
 export function addMember(room: RoomRecord, profile: MemberProfile): RoomMember {
-  if (room.status !== 'OPEN')
+  if (!acceptsPlayers(room))
     throw new AppError(ErrorCode.RoomInProgress, 'A match is already running in this room');
   if (room.members.length >= room.maxPlayers) throw new AppError(ErrorCode.RoomFull, 'The room is full');
   const member: RoomMember = {
@@ -88,11 +93,16 @@ export function removeMember(room: RoomRecord, userId: string): void {
   transferHostIfNeeded(room, seat);
 }
 
-/** Drops members who left during the match that just ended. */
-export function purgeLeftMembers(room: RoomRecord): void {
+/**
+ * Drops members who left, except those still seated (a SESSION table frees a
+ * leaver's seat when the round in play ends). Returns whether anyone went.
+ */
+export function purgeLeftMembers(room: RoomRecord, stillSeated: readonly string[] = []): boolean {
   const seat = hostSeat(room);
-  room.members = room.members.filter((m) => !m.left);
+  const before = room.members.length;
+  room.members = room.members.filter((m) => !m.left || stillSeated.includes(m.id));
   transferHostIfNeeded(room, seat);
+  return room.members.length !== before;
 }
 
 export function isEmpty(room: RoomRecord): boolean {
@@ -136,6 +146,11 @@ export function appendChat(room: RoomRecord, message: ChatMessage): void {
  * Upgrades them in place when loaded, so a deploy never breaks live rooms.
  */
 export function upgradeRoom(room: RoomRecord): RoomRecord {
+  const legacy = room as LegacyRoom;
+  legacy.lifecycle ??= 'MATCH';
+  if (legacy.session) {
+    legacy.session.usernames ??= Object.fromEntries(room.members.map((m) => [m.id, m.username]));
+  }
   const saved: LegacyMatchResult | null = room.lastResult;
   if (saved && !saved.standings) {
     const rankings = saved.rankings ?? [];
@@ -147,6 +162,12 @@ export function upgradeRoom(room: RoomRecord): RoomRecord {
   }
   return room;
 }
+
+/** A room saved before sessions existed: no lifecycle, and matches without usernames. */
+type LegacyRoom = Omit<RoomRecord, 'lifecycle' | 'session'> & {
+  lifecycle?: RoomRecord['lifecycle'];
+  session: (Omit<SessionRecord, 'usernames'> & { usernames?: SessionRecord['usernames'] }) | null;
+};
 
 /** A `MatchResult` as it may have been saved by an older server. */
 interface LegacyMatchResult extends Omit<MatchResult, 'standings'> {
@@ -160,6 +181,7 @@ export function toRoomState(room: RoomRecord, gameName: string): RoomState {
     code: room.code,
     gameId: room.gameId,
     gameName,
+    lifecycle: room.lifecycle,
     hostId: room.hostId,
     isPrivate: room.isPrivate,
     maxPlayers: room.maxPlayers,

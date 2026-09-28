@@ -68,7 +68,39 @@ export interface GameResult {
 export interface SetupOptions {
   /** Result of the previous match played in the same room, if any. */
   readonly previousResult?: GameResult | null;
+  /**
+   * Room seat of each player, in the order of `players`. SESSION games keep
+   * these seats while others come and go; MATCH games may ignore them.
+   */
+  readonly seats?: readonly number[];
 }
+
+/**
+ * `MATCH`: the players who start are the players who finish.
+ * `SESSION`: a continuous table. Players join and leave between rounds and the
+ * table runs until the host (or the last player) ends it; the server reports
+ * those changes to the engine as `SessionAction`s.
+ */
+export type Lifecycle = 'MATCH' | 'SESSION';
+
+/** System actions the server applies (as `SYSTEM_PLAYER_ID`) to SESSION games. */
+export type SessionAction =
+  /** Someone took a free seat mid-session (or came back to the seat they were leaving). */
+  | { readonly type: 'SYS_PLAYER_JOINED'; readonly playerId: PlayerId; readonly seatIndex: number }
+  /** Someone left the room: they give up their seat, at the latest when the current round ends. */
+  | { readonly type: 'SYS_PLAYER_LEFT'; readonly playerId: PlayerId }
+  /** The host (or the last player leaving) ends the session. */
+  | { readonly type: 'SYS_END_SESSION' };
+
+export const sessionActions = {
+  joined: (playerId: PlayerId, seatIndex: number): SessionAction => ({
+    type: 'SYS_PLAYER_JOINED',
+    playerId,
+    seatIndex,
+  }),
+  left: (playerId: PlayerId): SessionAction => ({ type: 'SYS_PLAYER_LEFT', playerId }),
+  end: (): SessionAction => ({ type: 'SYS_END_SESSION' }),
+} as const;
 
 export type ConfigValue = string | number | boolean;
 
@@ -93,6 +125,7 @@ export interface GameModule<State, Action, Config, View = unknown, Event extends
   readonly name: string;
   readonly minPlayers: number;
   readonly maxPlayers: number;
+  readonly lifecycle: Lifecycle;
   /** Validates/normalises room configuration (defaults applied). */
   readonly configSchema: z.ZodType<Config>;
   /** Room settings shown when creating a room; defaults come from `configSchema`. */
@@ -118,6 +151,14 @@ export interface GameModule<State, Action, Config, View = unknown, Event extends
   getPendingPlayers(state: State): PlayerId[];
   /** Time budget for the current decision, or `null` when no timer should run. */
   getTimeoutMs(state: State): number | null;
+  /**
+   * System action that closes the current phase when its timer runs out, for
+   * phases that end as a whole (e.g. bets close) rather than by acting for each
+   * pending player. `null` or absent: the server plays `getDefaultAction` for them.
+   */
+  getTimeoutAction?(state: State): Action | null;
+  /** SESSION games (required there): who holds a seat right now. */
+  getSeatedPlayers?(state: State): PlayerId[];
   isFinished(state: State): boolean;
   getResult(state: State): GameResult;
 }

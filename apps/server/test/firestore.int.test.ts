@@ -229,4 +229,37 @@ describe('MatchesRepository', () => {
     expect(legacy).toMatchObject({ position: 3, outcome: 'LOSER', score: null });
     expect(legacy?.players.map((p) => p.outcome)).toEqual(['WINNER', 'PLACED', 'LOSER']);
   });
+
+  it('adds players who sat down mid-session, and records the session for everyone', async () => {
+    const matchId = randomUUID();
+    const [host, late] = [randomUUID(), randomUUID()];
+    await profiles.upsert(host, { username: unique('ana'), avatarUrl: null });
+    await profiles.upsert(late, { username: unique('eva'), avatarUrl: null });
+    await matches.create({
+      id: matchId,
+      roomId: randomUUID(),
+      gameId: 'blackjack',
+      seed: 'ef'.repeat(32),
+      config: { decks: 6 },
+      startedAt: new Date(),
+      players: [{ profileId: host, username: 'ana', seat: 0 }],
+    });
+    await matches.addPlayer(matchId, { profileId: late, username: 'eva', seat: 3 });
+
+    const match = (await db.collection('matches').doc(matchId).get()).data();
+    expect(match?.playerIds).toEqual([host, late]);
+    await matches.finish(
+      matchId,
+      [
+        { playerId: late, outcome: 'PLACED', position: 1, score: 40 },
+        { playerId: host, outcome: 'PLACED', position: 2, score: -40 },
+      ],
+      false,
+    );
+    const [entry] = await matches.historyFor(late, 10);
+    expect(entry).toMatchObject({ gameId: 'blackjack', position: 1, outcome: 'PLACED', score: 40 });
+    expect(entry?.players).toHaveLength(2);
+    // A session counts as played, never as a win or a loss.
+    expect((await profiles.find(late))?.stats.byGame.blackjack).toEqual({ played: 1, wins: 0, losses: 0 });
+  });
 });

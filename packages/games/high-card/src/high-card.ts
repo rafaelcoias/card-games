@@ -124,6 +124,7 @@ export const highCard: GameModule<
   name: 'Carta Mais Alta',
   minPlayers: 2,
   maxPlayers: 6,
+  lifecycle: 'MATCH',
   configSchema: highCardConfigSchema,
   configUi: highCardConfigUi,
   actionSchema,

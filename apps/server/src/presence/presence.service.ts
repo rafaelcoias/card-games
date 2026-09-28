@@ -10,7 +10,7 @@ import type { OnlinePlayer, PresenceSnapshot, PresenceStatus } from '@cardroom/s
 import type Redis from 'ioredis';
 import { GAME_REGISTRY } from '../games/tokens';
 import { REDIS } from '../redis/redis.module';
-import type { MemberProfile } from '../rooms/room.logic';
+import { acceptsPlayers, type MemberProfile } from '../rooms/room.logic';
 import type { RoomRecord } from '../rooms/room.model';
 import { RoomStore } from '../rooms/room.store';
 
@@ -147,7 +147,7 @@ export class PresenceService implements OnApplicationBootstrap, OnModuleDestroy 
         status,
         gameName: room ? (this.registry.get(room.gameId)?.name ?? room.gameId) : null,
         // Private room codes are invitations: never expose them.
-        roomCode: room && !room.isPrivate && room.status === 'OPEN' ? room.code : null,
+        roomCode: room && !room.isPrivate && acceptsPlayers(room) ? room.code : null,
       });
     });
     return players;

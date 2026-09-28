@@ -73,6 +73,7 @@ export function createFodinhaModule(dealer: Dealer = shuffledDealer): FodinhaMod
     name: 'Fodinha',
     minPlayers: MIN_PLAYERS,
     maxPlayers: MAX_PLAYERS,
+    lifecycle: 'MATCH',
     configSchema: fodinhaConfigSchema,
     configUi: fodinhaConfigUi,
     actionSchema: fodinhaActionSchema,

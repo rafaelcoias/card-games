@@ -138,16 +138,20 @@ export function attachBot<View, Action>(
   });
 }
 
-/** Host creates the room, guests join and get ready, host starts. Returns the room code. */
+/**
+ * Host creates the room, guests join and get ready, host starts. Returns the
+ * room code. `maxPlayers` leaves free seats (session tables take players later).
+ */
 export async function startMatch(
   bots: Bot[],
   gameId: string,
   config: Record<string, unknown> = {},
+  maxPlayers = bots.length,
 ): Promise<string> {
   const [host, ...guests] = bots as [Bot, ...Bot[]];
   const created = (await host.socket.timeout(8000).emitWithAck('room:create', {
     gameId,
-    maxPlayers: bots.length,
+    maxPlayers,
     isPrivate: true,
     config,
   })) as Ack<JoinedRoom>;

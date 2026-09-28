@@ -8,6 +8,7 @@ import type {
   HistoryDoc,
   HistoryPlayerDoc,
   MatchDoc,
+  MatchPlayerDoc,
   ProfileDoc,
   ProfileRecord,
   RoomDoc,
@@ -197,6 +198,18 @@ export class MatchesRepository {
       playerIds: match.players.map((p) => p.profileId),
     };
     await this.db.collection(COLLECTIONS.matches).doc(match.id).set(doc);
+  }
+
+  /** Someone sat down at a running SESSION table: they get a history entry when it ends. */
+  async addPlayer(
+    matchId: string,
+    player: { profileId: string; username: string; seat: number },
+  ): Promise<void> {
+    const doc: MatchPlayerDoc = { ...player, finalPosition: null, outcome: null, score: null };
+    await this.db
+      .collection(COLLECTIONS.matches)
+      .doc(matchId)
+      .update({ players: FieldValue.arrayUnion(doc), playerIds: FieldValue.arrayUnion(player.profileId) });
   }
 
   /** Buffered: never blocks gameplay on a database round-trip. */

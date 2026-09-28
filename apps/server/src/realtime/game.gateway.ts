@@ -137,6 +137,11 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     return this.handle(socket, () => this.rooms.start(socket.data.profile.id));
   }
 
+  @SubscribeMessage(ClientEvent.RoomEnd)
+  endSession(@ConnectedSocket() socket: GameSocket): Promise<Ack<void>> {
+    return this.handle(socket, () => this.rooms.endSession(socket.data.profile.id));
+  }
+
   @SubscribeMessage(ClientEvent.RoomKick)
   kick(@ConnectedSocket() socket: GameSocket, @MessageBody() body: unknown): Promise<Ack<void>> {
     return this.handle(socket, () =>

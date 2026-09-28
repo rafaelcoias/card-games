@@ -28,6 +28,7 @@ import {
   isEmpty,
   markPresent,
   removeMember,
+  requireHost,
   requireMember,
   type MemberProfile,
 } from './room.logic';
@@ -79,6 +80,7 @@ export class RoomsService implements OnModuleInit {
       id,
       code,
       gameId: module.id,
+      lifecycle: module.lifecycle,
       hostId: user.id,
       isPrivate: input.isPrivate,
       maxPlayers: input.maxPlayers,
@@ -119,13 +121,13 @@ export class RoomsService implements OnModuleInit {
 
     return this.store.mutate(roomId, async (room, effects) => {
       const existing = findMember(room, user.id);
-      if (existing) {
-        markPresent(existing);
-      } else {
-        addMember(room, user);
-      }
+      const returning = existing?.left ?? false;
+      const member = existing ?? addMember(room, user);
+      if (existing) markPresent(existing);
       await this.store.setUserRoom(user.id, room.id);
       this.emitter.subscribeUserToRoom(user.id, room.id);
+      // A running session table seats newcomers, and takes back whoever had got up.
+      if (!existing || returning) this.sessions.seatPlayer(room, member, effects);
       if (existing) this.sessions.onPresenceChanged(room, effects);
       this.sessions.sendSnapshot(room, user.id, effects);
       effects.defer(() => this.publisher.publishRoom(room));
@@ -153,6 +155,15 @@ export class RoomsService implements OnModuleInit {
       assertCanStart(room, userId, module.minPlayers, Math.min(module.maxPlayers, room.maxPlayers));
       this.sessions.start(room, effects);
       this.logger.log({ roomId: room.id, players: room.members.length }, 'Match started');
+    });
+  }
+
+  /** Host ends a running SESSION table (blackjack): the session result is recorded like a match's. */
+  async endSession(userId: string): Promise<void> {
+    await this.mutateCurrent(userId, (room, effects) => {
+      requireHost(room, userId);
+      this.sessions.endSession(room, effects);
+      this.logger.log({ roomId: room.id }, 'Session end requested');
     });
   }
 
@@ -233,6 +244,7 @@ export class RoomsService implements OnModuleInit {
       hostName: findMember(room, room.hostId)?.username ?? '—',
       playerCount: room.members.length,
       maxPlayers: room.maxPlayers,
+      inProgress: room.status === 'PLAYING',
     }));
   }
 
@@ -265,6 +277,7 @@ export class RoomsService implements OnModuleInit {
   ): void {
     const roomId = room.id;
     removeMember(room, userId);
+    this.sessions.releasePlayer(room, userId, effects);
     if (room.status === 'OPEN' && isEmpty(room)) room.status = 'CLOSED';
     this.sessions.onPresenceChanged(room, effects);
 

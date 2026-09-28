@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mexicana } from './module';
-import { buildState, current, eventTypes, expectError, expectOk, ids, play } from './test-utils';
+import { buildState, card, current, eventTypes, expectError, expectOk, ids, play } from './test-utils';
 
 /** Three players with enough spare cards that nobody finishes by accident. */
 const table = (
@@ -300,10 +300,109 @@ describe('picking up', () => {
     expect(current(next)).toBe('p2');
   });
 
+  it('ignores the face-up cards while a hand is held', () => {
+    const state = buildState({
+      players: { p1: { hand: ['4H'], faceUp: ['5S'] }, p2: { hand: ['5C'] } },
+      discard: ['KS'],
+    });
+    expect(mexicana.getValidActions(state, 'p1')).toEqual([{ type: 'PICK_UP_PILE' }]);
+    expectError(
+      mexicana.applyAction(state, { type: 'PICK_UP_PILE', faceUpCardId: '5S' }, 'p1'),
+      'INVALID_CARDS',
+    );
+    expect(mexicana.getDefaultAction(state, 'p1')).toEqual({ type: 'TIMEOUT_PICK_UP' });
+  });
+
   it('clears restrictions and skips', () => {
     const state = buildState({ players: { p1: { hand: ['KH'] }, p2: { hand: ['5C'] } }, discard: ['7S'] });
     const next = expectOk(mexicana.applyAction(state, { type: 'TIMEOUT_PICK_UP' }, 'p1')).state;
     expect(next.restriction).toBe('none');
     expect(next.sameRankRun).toBe(0);
+  });
+});
+
+describe('picking up with only face-up cards left', () => {
+  /** p1 plays from the table: nothing beats the king (no 2, 3, 10 or joker face-up). */
+  const stuck = (faceUp: (string | null)[] = ['9H', '4S', 'QC'], discard = ['KS']) =>
+    buildState({
+      players: { p1: { faceUp, faceDown: ['JD', 'JC', 'JH'] }, p2: { hand: ['5C'] }, p3: { hand: ['6C'] } },
+      discard,
+    });
+
+  it('offers one pick-up per face-up card', () => {
+    expect(mexicana.getValidActions(stuck(['9H', null, 'QC']), 'p1')).toEqual([
+      { type: 'PICK_UP_PILE', faceUpCardId: '9H' },
+      { type: 'PICK_UP_PILE', faceUpCardId: 'QC' },
+    ]);
+    expect(mexicana.getValidActions(stuck(), 'p2')).toEqual([]);
+  });
+
+  it('the chosen face-up card goes to the hand with the pile and the turn is lost', () => {
+    const { state, events } = expectOk(
+      mexicana.applyAction(stuck(), { type: 'PICK_UP_PILE', faceUpCardId: 'QC' }, 'p1'),
+    );
+    expect(events).toEqual([
+      {
+        type: 'PilePickedUp',
+        playerId: 'p1',
+        cards: [card('KS'), card('QC')],
+        reason: 'noValidPlay',
+        faceUpSlot: 2,
+      },
+    ]);
+    expect(ids(state.players.p1!.hand).sort()).toEqual(['KS', 'QC']);
+    expect(state.players.p1!.faceUp).toEqual([card('9H'), card('4S'), null]);
+    expect(state.discardPile).toEqual([]);
+    expect(current(state)).toBe('p2');
+  });
+
+  it('the choice is required and must be one of the face-up cards', () => {
+    const state = stuck();
+    expectError(mexicana.applyAction(state, { type: 'PICK_UP_PILE' }, 'p1'), 'FACE_UP_CARD_REQUIRED');
+    expectError(
+      mexicana.applyAction(state, { type: 'PICK_UP_PILE', faceUpCardId: 'JD' }, 'p1'),
+      'INVALID_CARDS',
+    );
+  });
+
+  it('is refused while any face-up card can be played', () => {
+    const state = stuck(['9H', '2S', 'QC']);
+    expectError(
+      mexicana.applyAction(state, { type: 'PICK_UP_PILE', faceUpCardId: '9H' }, 'p1'),
+      'PICK_UP_NOT_ALLOWED',
+    );
+  });
+
+  it('taking the last face-up card leaves the face-down ones for later', () => {
+    const { state } = expectOk(
+      mexicana.applyAction(stuck([null, '4S', null]), { type: 'PICK_UP_PILE', faceUpCardId: '4S' }, 'p1'),
+    );
+    expect(state.players.p1!.faceUp).toEqual([null, null, null]);
+    expect(state.players.p1!.faceDown.every((slot) => slot !== null)).toBe(true);
+    expect(ids(state.players.p1!.hand).sort()).toEqual(['4S', 'KS']);
+  });
+
+  it('on timeout: the lowest face-up card goes along with the pile', () => {
+    const state = stuck();
+    const action = mexicana.getDefaultAction(state, 'p1');
+    expect(action).toEqual({ type: 'TIMEOUT_PICK_UP', faceUpCardId: '4S' });
+    const { state: next, events } = expectOk(mexicana.applyAction(state, action!, 'p1'));
+    expect(events[0]).toMatchObject({ type: 'PilePickedUp', reason: 'timeout', faceUpSlot: 1 });
+    expect(ids(next.players.p1!.hand).sort()).toEqual(['4S', 'KS']);
+
+    const unnamed = expectOk(mexicana.applyAction(state, { type: 'TIMEOUT_PICK_UP' }, 'p1')).state;
+    expect(unnamed.players.p1!.faceUp[1]).toBeNull();
+  });
+
+  it('on timeout with a playable face-up card: only the pile is taken', () => {
+    const state = stuck(['9H', 'AS', 'QC']);
+    expect(mexicana.getDefaultAction(state, 'p1')).toEqual({ type: 'TIMEOUT_PICK_UP' });
+    const next = expectOk(mexicana.applyAction(state, { type: 'TIMEOUT_PICK_UP' }, 'p1')).state;
+    expect(ids(next.players.p1!.hand)).toEqual(['KS']);
+    expect(next.players.p1!.faceUp).toEqual([card('9H'), card('AS'), card('QC')]);
+    expectError(
+      mexicana.applyAction(state, { type: 'TIMEOUT_PICK_UP', faceUpCardId: '9H' }, 'p1'),
+      'INVALID_CARDS',
+    );
   });
 });

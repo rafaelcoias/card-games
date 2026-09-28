@@ -12,7 +12,8 @@ export const roomCodeSchema = z
 
 export const roomCreateSchema = z.strictObject({
   gameId: z.string().min(1).max(40),
-  maxPlayers: z.number().int().min(2).max(10),
+  // Each game narrows this to its own range (a blackjack table can be played alone).
+  maxPlayers: z.number().int().min(1).max(10),
   isPrivate: z.boolean(),
   config: z.record(z.string(), z.unknown()).default({}),
 });

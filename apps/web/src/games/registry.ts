@@ -1,7 +1,9 @@
+import { blackjack } from '@cardroom/blackjack';
 import { fodinha } from '@cardroom/fodinha';
 import type { ConfigValue } from '@cardroom/game-core';
 import { highCard } from '@cardroom/high-card';
 import { mexicana } from '@cardroom/mexicana';
+import { BlackjackTable } from './blackjack/table';
 import { FodinhaTable } from './fodinha/table';
 import { HighCardTable } from './high-card/table';
 import { MexicanaTable } from './mexicana/table';
@@ -19,6 +21,7 @@ function define(rules: GameRules, presentation: Presentation): GameClientDefinit
     name: rules.name,
     minPlayers: rules.minPlayers,
     maxPlayers: rules.maxPlayers,
+    lifecycle: rules.lifecycle,
     settings: rules.configUi,
     defaults: rules.configSchema.parse({}) as Record<string, ConfigValue>,
     validateTable: (config, playerCount) => rules.validateTable?.(config as never, playerCount) ?? null,
@@ -44,6 +47,13 @@ export const GAME_CLIENTS: GameClientDefinition[] = [
     resultStyle: 'survival',
     resultDelayMs: 2600,
     Table: FodinhaTable,
+  }),
+  define(blackjack, {
+    tagline: 'Contra a banca, até 7 à mesa. Fichas virtuais, sem valor real; entra e sai quando quiseres.',
+    defaultMaxPlayers: 7,
+    resultStyle: 'chips',
+    resultDelayMs: 1200,
+    Table: BlackjackTable,
   }),
   define(highCard, {
     tagline: 'Um aquecimento rápido: a carta mais alta ganha a ronda.',

@@ -23,6 +23,7 @@ export const ClientEvent = {
   RoomReady: 'room:ready',
   RoomStart: 'room:start',
   RoomKick: 'room:kick',
+  RoomEnd: 'room:end',
   RoomChat: 'room:chat',
   GameAction: 'game:action',
 } as const;
@@ -48,6 +49,8 @@ export interface ClientToServerEvents {
   [ClientEvent.RoomReady]: (payload: RoomReadyPayload, ack: AckCallback) => void;
   [ClientEvent.RoomStart]: (ack: AckCallback) => void;
   [ClientEvent.RoomKick]: (payload: RoomKickPayload, ack: AckCallback) => void;
+  /** Host ends a running SESSION game (e.g. a blackjack table). */
+  [ClientEvent.RoomEnd]: (ack: AckCallback) => void;
   [ClientEvent.RoomChat]: (payload: RoomChatPayload, ack: AckCallback) => void;
   [ClientEvent.GameAction]: (payload: GameActionPayload, ack: AckCallback) => void;
 }

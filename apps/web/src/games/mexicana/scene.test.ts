@@ -161,6 +161,34 @@ describe('applyEvent', () => {
     expect(step.scene.hand.find((h) => h.card.id === '4S')?.enter?.from).toBe(ANCHORS.slot('me', 0));
   });
 
+  it('takes an unplayable face-up card along with the pile, from its slot', () => {
+    const mine = applyEvent(base(), {
+      type: 'PilePickedUp',
+      playerId: 'me',
+      cards: [c('3D'), c('KD')],
+      reason: 'noValidPlay',
+      faceUpSlot: 0,
+    });
+    expect(seat(mine.scene, 'me').faceUp).toEqual([null, null, null]);
+    // Shared layoutId: the card glides from the table into the hand, no flight.
+    expect(mine.scene.hand.find((h) => h.card.id === 'KD')).toEqual({ card: c('KD') });
+    expect(mine.flights).toEqual([]);
+
+    const theirs = applyEvent(base(), {
+      type: 'PilePickedUp',
+      playerId: 'op',
+      cards: [c('3D'), c('4C')],
+      reason: 'timeout',
+      faceUpSlot: 0,
+    });
+    expect(seat(theirs.scene, 'op').faceUp).toEqual([null, null, null]);
+    expect(seat(theirs.scene, 'op').handCount).toBe(5);
+    expect(theirs.flights.map((f) => [f.cardId, f.from])).toEqual([
+      ['3D', ANCHORS.discard],
+      ['4C', ANCHORS.slot('op', 0)],
+    ]);
+  });
+
   it('draws for opponents with flights, and silently for me', () => {
     const theirs = applyEvent(base(), { type: 'CardsDrawn', playerId: 'op', count: 2 });
     expect(theirs.flights).toHaveLength(2);

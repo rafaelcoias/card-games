@@ -15,6 +15,7 @@
     "backfill:stats": "tsx scripts/backfill-stats.ts"
   },
   "dependencies": {
+    "@cardroom/blackjack": "workspace:*",
     "@cardroom/fodinha": "workspace:*",
     "@cardroom/game-core": "workspace:*",
     "@cardroom/high-card": "workspace:*",

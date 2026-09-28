@@ -63,10 +63,18 @@ export type MexicanaClientAction =
   | { type: 'CHOOSE_FACE_UP'; cardIds: [CardId, CardId, CardId] }
   | { type: 'PLAY_CARDS'; cardIds: CardId[] }
   | { type: 'PLAY_FACE_DOWN'; position: number }
-  | { type: 'PICK_UP_PILE' };
+  /**
+   * With only face-up cards left and none of them playable, the player keeps
+   * one of them along with the pile: `faceUpCardId` is required then and
+   * refused otherwise (the face-up twin of a failed face-down reveal).
+   */
+  | { type: 'PICK_UP_PILE'; faceUpCardId?: CardId };
 
-/** `TIMEOUT_PICK_UP` is only ever produced by the server (default action). */
-export type MexicanaAction = MexicanaClientAction | { type: 'TIMEOUT_PICK_UP' };
+/**
+ * `TIMEOUT_PICK_UP` is only ever produced by the server (default action). When
+ * a face-up card must go along with the pile, the default action names it.
+ */
+export type MexicanaAction = MexicanaClientAction | { type: 'TIMEOUT_PICK_UP'; faceUpCardId?: CardId };
 
 export type CardSource = 'hand' | 'faceUp' | 'faceDown';
 export type PickUpReason = 'noValidPlay' | 'timeout' | 'faceDownFailed';
@@ -79,7 +87,15 @@ export type MexicanaEvent =
   | { type: 'CardsPlayed'; playerId: PlayerId; cards: Card[]; source: CardSource; slot?: number }
   | { type: 'PileBurned'; playerId: PlayerId; reason: BurnReason; count: number }
   | { type: 'PlayerSkipped'; playerId: PlayerId; by: PlayerId }
-  | { type: 'PilePickedUp'; playerId: PlayerId; cards: Card[]; reason: PickUpReason }
+  | {
+      type: 'PilePickedUp';
+      playerId: PlayerId;
+      /** The pile, then the table card that goes along with it (if any). */
+      cards: Card[];
+      reason: PickUpReason;
+      /** Face-up slot whose unplayable card was taken along with the pile. */
+      faceUpSlot?: number;
+    }
   | { type: 'CardsDrawn'; playerId: PlayerId; count: number }
   | { type: 'PlayerFinished'; playerId: PlayerId; position: number }
   | { type: 'GameFinished'; loserId: PlayerId };

@@ -2,6 +2,8 @@ import type { MatchHistoryEntry, MatchHistoryPlayer } from '@cardroom/shared';
 import clsx from 'clsx';
 import { Fragment } from 'react';
 import { Spinner } from '@/components/ui/spinner';
+import { findGameClient } from '@/games/registry';
+import { signed } from '@/games/score';
 import { PlayerLink } from './player-link';
 
 const dateFormat = new Intl.DateTimeFormat('pt-PT', { dateStyle: 'medium', timeStyle: 'short' });
@@ -50,6 +52,7 @@ export function MatchHistory({ matches, failed = false, emptyText }: MatchHistor
         <ul className="mt-4 divide-y divide-line">
           {matches.map((match) => {
             const badge = resultBadge(match);
+            const chips = findGameClient(match.gameId)?.resultStyle === 'chips';
             return (
               <li key={match.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
                 <span
@@ -76,7 +79,7 @@ export function MatchHistory({ matches, failed = false, emptyText }: MatchHistor
                         {p.score !== null && (
                           <span className={p.outcome === 'LOSER' ? 'text-danger' : 'text-subtle'}>
                             {' '}
-                            ({p.score})
+                            ({chips ? signed(p.score) : p.score})
                           </span>
                         )}
                       </Fragment>

@@ -56,7 +56,29 @@ export function getValidActions(state: MexicanaState, playerId: PlayerId): Mexic
   if (state.phase === 'CHOOSING') return player.hasChosenFaceUp ? [] : faceUpChoices(state, player);
   const plays = enumeratePlays(state, playerId);
   if (plays.length > 0) return plays;
-  return currentPlayerId(state) === playerId ? [{ type: 'PICK_UP_PILE' }] : [];
+  if (currentPlayerId(state) !== playerId) return [];
+  const takeable = faceUpToTake(state, playerId);
+  if (takeable.length === 0) return [{ type: 'PICK_UP_PILE' }];
+  return takeable.map((card) => ({ type: 'PICK_UP_PILE', faceUpCardId: card.id }));
+}
+
+/**
+ * Face-up cards the current player must choose from when picking up the pile:
+ * all of them when only face-up cards are left and none can be played (the
+ * chosen one goes to the hand with the pile, like a failed face-down reveal).
+ * Empty in every other situation.
+ */
+export function faceUpToTake(state: MexicanaState, playerId: PlayerId): Card[] {
+  if (state.phase !== 'PLAYING' || currentPlayerId(state) !== playerId) return [];
+  const player = state.players[playerId];
+  if (!player || activeLayer(player) !== 'faceUp') return [];
+  if (enumeratePlays(state, playerId).length > 0) return [];
+  return occupied(player.faceUp);
+}
+
+/** Default card to take along with the pile: the lowest in the hierarchy (slot order breaks ties). */
+export function defaultFaceUpToTake(cards: readonly Card[]): Card | undefined {
+  return [...cards].sort((a, b) => autoChooseScore(a.rank) - autoChooseScore(b.rank))[0];
 }
 
 function faceUpChoices(state: MexicanaState, player: MexicanaPlayerState): MexicanaAction[] {
@@ -66,7 +88,11 @@ function faceUpChoices(state: MexicanaState, player: MexicanaPlayerState): Mexic
     .map((subset) => ({ type: 'CHOOSE_FACE_UP', cardIds: subset as [CardId, CardId, CardId] }));
 }
 
-/** Timer expiry: auto-pick the highest face-up cards, or pick up the pile and lose the turn (rules §8). */
+/**
+ * Timer expiry: auto-pick the highest face-up cards, or pick up the pile and
+ * lose the turn (rules §8) — taking the lowest face-up card along when only
+ * unplayable face-up cards are left.
+ */
 export function getDefaultAction(state: MexicanaState, playerId: PlayerId): MexicanaAction | null {
   const player = state.players[playerId];
   if (!player) return null;
@@ -78,8 +104,9 @@ export function getDefaultAction(state: MexicanaState, playerId: PlayerId): Mexi
       .map((card) => card.id);
     return { type: 'CHOOSE_FACE_UP', cardIds: highest as [CardId, CardId, CardId] };
   }
-  if (state.phase === 'PLAYING' && currentPlayerId(state) === playerId) return { type: 'TIMEOUT_PICK_UP' };
-  return null;
+  if (state.phase !== 'PLAYING' || currentPlayerId(state) !== playerId) return null;
+  const take = defaultFaceUpToTake(faceUpToTake(state, playerId));
+  return take ? { type: 'TIMEOUT_PICK_UP', faceUpCardId: take.id } : { type: 'TIMEOUT_PICK_UP' };
 }
 
 export function getPendingPlayers(state: MexicanaState): PlayerId[] {

@@ -39,7 +39,7 @@ async function takeTurn(page: Page): Promise<boolean> {
   const status =
     (await page
       .getByRole('status')
-      .filter({ hasText: /A tua vez|Vira uma carta|Joga uma carta visível/ })
+      .filter({ hasText: /A tua vez|Vira uma carta|Joga uma carta visível|levas com a pilha/ })
       .count()) > 0;
   if (!status) return false;
 
@@ -49,6 +49,7 @@ async function takeTurn(page: Page): Promise<boolean> {
     await page.getByRole('button', { name: /^Jogar/ }).click();
     return true;
   }
+  // Table cards: play one, or (no face-up card playable) take one along with the pile.
   for (const layer of ['faceUp', 'faceDown']) {
     const card = page.locator(
       `[data-table-card="${layer}"] [role="button"]:has([data-card-state="playable"])`,

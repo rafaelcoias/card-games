@@ -12,7 +12,7 @@ import {
   type Rng,
   type SetupOptions,
 } from '@cardroom/game-core';
-import { enumeratePlays } from './moves';
+import { defaultFaceUpToTake, enumeratePlays, faceUpToTake } from './moves';
 import { DEFAULT_RULES, canPlayRank, placeCards, restrictionFor } from './rules';
 import {
   activeLayer,
@@ -112,9 +112,9 @@ export function applyAction(state: MexicanaState, action: MexicanaAction, player
       if (enumeratePlays(state, playerId).length > 0) {
         return fail('PICK_UP_NOT_ALLOWED', 'You can only pick up the pile when you have no valid play');
       }
-      return pickUpPile(state, playerId, 'noValidPlay');
+      return pickUpPile(state, playerId, 'noValidPlay', action.faceUpCardId);
     case 'TIMEOUT_PICK_UP':
-      return pickUpPile(state, playerId, 'timeout');
+      return pickUpPile(state, playerId, 'timeout', action.faceUpCardId);
   }
 }
 
@@ -208,9 +208,38 @@ function playFaceDown(state: MexicanaState, playerId: PlayerId, position: number
   return ok(next, resolvePlay(next, playerId, [card], events));
 }
 
-function pickUpPile(state: MexicanaState, playerId: PlayerId, reason: PickUpReason): Result {
+/**
+ * Picks up the pile. With only unplayable face-up cards left, one of them —
+ * the player's choice, or the lowest on timeout — goes to the hand too, just
+ * like a face-down card that fails its reveal.
+ */
+function pickUpPile(
+  state: MexicanaState,
+  playerId: PlayerId,
+  reason: PickUpReason,
+  faceUpCardId: CardId | undefined,
+): Result {
+  const takeable = faceUpToTake(state, playerId);
+  if (takeable.length === 0) {
+    if (faceUpCardId !== undefined) {
+      return fail('INVALID_CARDS', 'A face-up card only goes with the pile when none of them can be played');
+    }
+    const next = cloneState(state);
+    return ok(next, collectPile(next, playerId, reason, []));
+  }
+
+  const chosenId = faceUpCardId ?? (reason === 'timeout' ? defaultFaceUpToTake(takeable)?.id : undefined);
+  if (chosenId === undefined) {
+    return fail('FACE_UP_CARD_REQUIRED', 'Choose the face-up card that goes to your hand with the pile');
+  }
   const next = cloneState(state);
-  return ok(next, collectPile(next, playerId, reason, []));
+  const draft = next.players[playerId] as MexicanaPlayerState;
+  const slot = draft.faceUp.findIndex((card) => card?.id === chosenId);
+  const card = draft.faceUp[slot];
+  if (!card) return fail('INVALID_CARDS', 'That card is not one of your face-up cards');
+  draft.faceUp[slot] = null;
+  draft.hand.push(card);
+  return ok(next, collectPile(next, playerId, reason, [card], slot));
 }
 
 /** Moves the discard pile into the player's hand and passes the turn (mutates the draft). */
@@ -219,6 +248,7 @@ function collectPile(
   playerId: PlayerId,
   reason: PickUpReason,
   alsoCollected: Card[],
+  faceUpSlot?: number,
 ): MexicanaEvent[] {
   const player = draft.players[playerId] as MexicanaPlayerState;
   const cards = [...draft.discardPile, ...alsoCollected];
@@ -226,7 +256,9 @@ function collectPile(
   draft.discardPile = [];
   resetPile(draft);
   draft.currentIndex = nextActiveIndex(draft, draft.currentIndex);
-  return [{ type: 'PilePickedUp', playerId, cards, reason }];
+  return [
+    { type: 'PilePickedUp', playerId, cards, reason, ...(faceUpSlot === undefined ? {} : { faceUpSlot }) },
+  ];
 }
 
 function resetPile(draft: MexicanaState): void {

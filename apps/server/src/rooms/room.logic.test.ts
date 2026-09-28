@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AppError } from '../common/app-error';
 import {
+  acceptsPlayers,
   addMember,
   appendChat,
   assertCanKick,
@@ -19,6 +20,7 @@ function room(overrides: Partial<RoomRecord> = {}): RoomRecord {
     id: 'r1',
     code: 'ABCDEF',
     gameId: 'mexicana',
+    lifecycle: 'MATCH',
     hostId: 'a',
     isPrivate: false,
     maxPlayers: 4,
@@ -48,6 +50,7 @@ const session = (players: string[]): SessionRecord => ({
   state: {},
   seq: 0,
   players,
+  usernames: Object.fromEntries(players.map((id) => [id, id.toUpperCase()])),
   config: {},
   startedAt: 0,
   deadline: null,
@@ -79,6 +82,33 @@ describe('room membership', () => {
     const r = withMembers('a', 'b');
     r.status = 'PLAYING';
     expectCode(() => addMember(r, profile('c')), 'ROOM_IN_PROGRESS');
+  });
+
+  it('a running session table takes players; a running match does not', () => {
+    const table = withMembers('a', 'b');
+    table.lifecycle = 'SESSION';
+    table.status = 'PLAYING';
+    expect(acceptsPlayers(table)).toBe(true);
+    expect(addMember(table, profile('c')).seat).toBe(2);
+    table.maxPlayers = 3;
+    expectCode(() => addMember(table, profile('d')), 'ROOM_FULL');
+    const match = withMembers('a', 'b');
+    match.status = 'PLAYING';
+    expect(acceptsPlayers(match)).toBe(false);
+    table.status = 'CLOSED';
+    expect(acceptsPlayers(table)).toBe(false);
+  });
+
+  it('keeps leavers who still hold a seat at a session table', () => {
+    const r = withMembers('a', 'b', 'c');
+    r.lifecycle = 'SESSION';
+    r.status = 'PLAYING';
+    r.session = session(['a', 'b', 'c']);
+    removeMember(r, 'b');
+    removeMember(r, 'c');
+    expect(purgeLeftMembers(r, ['a', 'b'])).toBe(true); // c's seat is free, b's hand is still in play
+    expect(r.members.map((m) => m.id)).toEqual(['a', 'b']);
+    expect(purgeLeftMembers(r, ['a', 'b'])).toBe(false);
   });
 
   it('passes the host role to the next player in seat order', () => {
@@ -152,7 +182,7 @@ describe('projection', () => {
     expect(r.chat).toHaveLength(50);
     expect(r.chat[0]!.id).toBe('10');
     const state = toRoomState(r, 'Mexicana');
-    expect(state).toMatchObject({ gameName: 'Mexicana', matchId: null, code: 'ABCDEF' });
+    expect(state).toMatchObject({ gameName: 'Mexicana', lifecycle: 'MATCH', matchId: null, code: 'ABCDEF' });
     expect(Object.keys(state.players[0]!)).not.toContain('disconnectedAt');
   });
 });
@@ -179,6 +209,17 @@ describe('upgradeRoom', () => {
         { playerId: 'c', username: 'C', position: 3, outcome: 'LOSER' },
       ],
     });
+  });
+
+  it('gives rooms saved before sessions existed a lifecycle, and their match the usernames', () => {
+    const saved = withMembers('a', 'b');
+    saved.session = session(['a', 'b']);
+    const legacy = structuredClone(saved) as unknown as Record<string, unknown> & {
+      session: Record<string, unknown>;
+    };
+    delete legacy.lifecycle;
+    delete legacy.session.usernames;
+    expect(upgradeRoom(legacy as unknown as RoomRecord)).toEqual(saved);
   });
 
   it('leaves current rooms untouched', () => {

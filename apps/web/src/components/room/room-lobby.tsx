@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { findGameClient } from '@/games/registry';
+import { formatScore } from '@/games/score';
 import type { GameClientDefinition } from '@/games/types';
 import { describeError } from '@/lib/errors';
 import { gameFeed } from '@/lib/realtime/game-feed';
@@ -27,6 +28,7 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
   const waitingFor = others.filter((p) => !p.ready || !p.connected);
   const minPlayers = game?.minPlayers ?? 2;
   const canStart = room.players.length >= minPlayers && waitingFor.length === 0;
+  const session = room.lifecycle === 'SESSION';
 
   const run = async (
     key: string,
@@ -75,7 +77,12 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
                   <span className="tabular-nums text-subtle">{s.position}.º </span>
                 ) : null}
                 {s.username}
-                {s.score !== undefined && <span className="tabular-nums text-subtle"> · {s.score} pts</span>}
+                {s.score !== undefined && (
+                  <span className="tabular-nums text-subtle">
+                    {' '}
+                    · {formatScore(game?.resultStyle, s.score)}
+                  </span>
+                )}
                 {s.position === undefined && s.outcome === 'LOSER' && ' · perdeu'}
               </span>
             ))}
@@ -127,7 +134,7 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
               loading={busy === 'start'}
               onClick={() => void run('start', commands.startMatch)}
             >
-              Começar partida
+              {session ? 'Abrir a mesa' : 'Começar partida'}
             </Button>
           ) : (
             <Button
@@ -142,7 +149,13 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
           <Button size="lg" variant="ghost" loading={busy === 'leave'} onClick={() => void leave()}>
             Sair da sala
           </Button>
-          {isHost && <p className="text-sm text-muted">Começas quando todos estiverem prontos.</p>}
+          {isHost && (
+            <p className="text-sm text-muted">
+              {session
+                ? 'Abres quando todos estiverem prontos; quem chegar depois senta-se com a mesa a decorrer.'
+                : 'Começas quando todos estiverem prontos.'}
+            </p>
+          )}
         </div>
       </div>
 

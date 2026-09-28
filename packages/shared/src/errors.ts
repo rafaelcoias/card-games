@@ -15,6 +15,7 @@ export const ErrorCode = {
   PlayerCount: 'PLAYER_COUNT',
   CannotKick: 'CANNOT_KICK',
   GameNotRunning: 'GAME_NOT_RUNNING',
+  CannotEnd: 'CANNOT_END',
   UsernameTaken: 'USERNAME_TAKEN',
   Busy: 'BUSY',
   Internal: 'INTERNAL',

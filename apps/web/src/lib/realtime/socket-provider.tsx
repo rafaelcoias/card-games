@@ -31,6 +31,8 @@ export interface RoomCommands {
   leaveRoom: () => Promise<Ack>;
   setReady: (ready: boolean) => Promise<Ack>;
   startMatch: () => Promise<Ack>;
+  /** Host ends a running SESSION table (it closes once the round in play is settled). */
+  endMatch: () => Promise<Ack>;
   kick: (playerId: string) => Promise<Ack>;
   sendChat: (text: string) => Promise<Ack>;
   sendAction: (action: unknown) => Promise<Ack>;
@@ -120,6 +122,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       leaveRoom: () => call(() => timed().emitWithAck('room:leave')),
       setReady: (ready) => call(() => timed().emitWithAck('room:ready', { ready })),
       startMatch: () => call(() => timed().emitWithAck('room:start')),
+      endMatch: () => call(() => timed().emitWithAck('room:end')),
       kick: (playerId) => call(() => timed().emitWithAck('room:kick', { playerId })),
       sendChat: (text) => call(() => timed().emitWithAck('room:chat', { text })),
       sendAction: (action) => call(() => timed().emitWithAck('game:action', { action })),

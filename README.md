@@ -1,7 +1,8 @@
 # Cardroom — jogos de cartas online, em tempo real
 
 Plataforma web para jogar cartas com amigos: contas, salas públicas e privadas, chat e mesas em tempo real
-com um servidor autoritativo. Os jogos são a **Mexicana** e a **Fodinha** (apostar vazas; especificação em `fodinha-kit/`); há também um
+com um servidor autoritativo. Os jogos são a **Mexicana**, a **Fodinha** (apostar vazas; especificação em `fodinha-kit/`) e o
+**Blackjack** (até 7 contra a banca, com fichas virtuais sem valor real; especificação em `blackjack-kit/`); há também um
 jogo trivial ("Carta Mais Alta") que prova que o núcleo é extensível.
 
 ➡️ **Pôr online: [DEPLOY.md](DEPLOY.md)**. As especificações originais estão em `00-README.md` … `07-PROMPT-COMPLETO.md`.
@@ -27,6 +28,7 @@ packages/
   games/
     mexicana/   Motor puro da Mexicana (sem I/O)
     fodinha/    Motor puro da Fodinha (sem I/O)
+    blackjack/  Motor puro do Blackjack (sem I/O)
     high-card/  Jogo trivial
   ui/         Baralho SVG (sprite + gerador) e componentes animados (Card, CardFan, …)
 firebase.json, firestore.rules, firestore.indexes.json   Configuração Firebase + emuladores
@@ -117,16 +119,17 @@ persistem em `.firebase-data/`.
 | `pnpm dev` | Tudo em modo desenvolvimento (Turborepo) |
 | `pnpm build` | Build de produção de todos os workspaces |
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Qualidade (ESLint com tipos, TS strict, Prettier) |
-| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana |
+| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
 | `pnpm --filter @cardroom/server test:int` | Repositórios Firestore contra o emulador |
-| `pnpm --filter @cardroom/server test:e2e` | 4 clientes Socket.IO jogam uma partida completa, com reconexão (`E2E_SERVER_URLS=url1,url2` reparte por 2 instâncias) |
-| `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe e duas partidas completas pela UI |
+| `pnpm --filter @cardroom/server test:e2e` | Clientes Socket.IO jogam partidas completas (com reconexão) e uma sessão de Blackjack onde se entra e sai a meio (`E2E_SERVER_URLS=url1,url2` reparte por 2 instâncias) |
+| `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe duas partidas completas e uma sessão de Blackjack pela UI |
 | `pnpm emulators` | Emuladores Firebase (Auth + Firestore) |
 | `pnpm firebase:deploy-rules` | Publica `firestore.rules` e os índices no projeto Firebase |
 | `pnpm cards:generate` | Regenera o baralho SVG |
 
 A galeria do baralho (54 cartas + verso) está em **`/dev/cards`**; os estados fixos da mesa da Fodinha (às
-cegas, apostas, empate, resumo, fim, 10 jogadores) estão em **`/dev/fodinha`**.
+cegas, apostas, empate, resumo, fim, 10 jogadores) estão em **`/dev/fodinha`**, e os do Blackjack (apostas, dica, separação em 3 mãos, seguro, even money,
+peek, banca, liquidação, baralhar, mesa cheia, recompra, entrar a meio) em **`/dev/blackjack`**.
 
 ## Decisões e notas
 
@@ -138,6 +141,9 @@ cegas, apostas, empate, resumo, fim, 10 jogadores) estão em **`/dev/fodinha`**.
   - Quem sai do jogo com a carta que queima passa a vez.
   - Os saltos contam jogadores em ciclo.
   - Na escolha automática das visíveis, o Joker vale como a carta mais alta.
+  - Só com visíveis na mesa e nenhuma jogável, quem apanha a pilha leva também uma delas para a mão, à
+    escolha (como uma escondida que falha); se o tempo acabar, vai a mais baixa. Com uma visível jogável não se
+    pode apanhar; o timeout, nesse caso, leva só a pilha.
 - **Sair a meio.** O lugar mantém-se e o servidor joga por ti. Se todos saírem, a partida fica registada como
   `aborted`.
 - **Contrato `GameModule`.** Face a `03-CONTRATO-E-EVENTOS.md` tem estas extensões: `getPendingPlayers`
@@ -151,8 +157,55 @@ cegas, apostas, empate, resumo, fim, 10 jogadores) estão em **`/dev/fodinha`**.
     em que nasceu, por isso qualquer outra ação torna-o obsoleto.
   - `configUi` (formulário de "Nova sala" gerado a partir do módulo; valores por omissão vêm do schema) e
     `validateTable` (ex.: jogadores × mão máxima ≤ 52), verificado ao criar a sala e ao começar.
+
+  e, com o Blackjack (`blackjack-kit/04`):
+  - `lifecycle: 'MATCH' | 'SESSION'`. Uma sessão é uma mesa contínua: a sala aceita entradas enquanto corre
+    (`acceptsPlayers`), aparece nas salas públicas como "A decorrer · há lugar" e só o anfitrião a termina
+    (`room:end`). Entrar, sair e terminar chegam ao motor como ações de sistema normalizadas
+    (`SYS_PLAYER_JOINED` / `SYS_PLAYER_LEFT` / `SYS_END_SESSION`, em `sessionActions`) em vez dos ganchos
+    `onPlayerJoin`/`onPlayerLeave` do kit: assim ficam no log de ações e o replay continua exato. O motor diz
+    quem está sentado (`getSeatedPlayers`); quem sai a meio de uma mão continua sentado até ao fim da ronda e
+    só então deixa a sala. Se todos saírem, a sessão termina com resultado (não é `aborted`).
+  - `getTimeoutAction`: fases simultâneas que fecham como um todo (as apostas) em vez de uma ação por omissão por
+    jogador. `setup(..., { seats })` passa os lugares da sala ao motor.
+  - `createShoe` + `CardInstance` (`uid` = `"AS#3"`) para sapatos de vários baralhos. A Mexicana e a Fodinha
+    continuam com `Card` de um só baralho (os ids já são únicos): mudá-las não traria nada.
 - **Fodinha.** Quem aposta primeiro abre todas as vazas da ronda (sem configuração). O baralho de cada ronda é
   baralhado com uma seed secreta tirada do DRBG no início da partida; na ronda às cegas o servidor nunca envia a
   um jogador a sua própria carta, e as cartas vão para a mesa sozinhas (700 ms entre cada uma).
+- **Blackjack.** Regras do `blackjack-kit/02` com as propostas por omissão de todos os pontos em aberto (`11`):
+  6 baralhos, carta de corte a 75%, banca fica no 17 mole, carta americana (peek), 3:2, dobrar depois de separar,
+  até 4 mãos, J+Q separa, desistência tardia, seguro e even money, 1000 fichas por sessão com recompra, dica
+  desligada por omissão, temporizadores de 15/10/20 s. Tudo configurável ao criar a sala.
+  - **Fichas sem valor.** Não há compras, trocas, prémios nem carteira permanente; o resultado de uma sessão é o
+    saldo (fichas finais − compras) e conta como "jogada" nas estatísticas, nunca como vitória ou derrota.
+  - **Ritmo.** A banca joga por ações de sistema agendadas, uma carta de cada vez (revelar 700 ms, cada carta
+    750 ms, 900 ms para espreitar, 350 ms por mão paga, 2,5 s de resumo, 2,2 s a baralhar). A distribuição
+    inicial é uma só ação: o cliente anima carta a carta (280 ms) e o motor só abre a fase seguinte depois disso
+    (`SYS_DEAL_DONE`) — o agendador consulta o Redis a cada 150 ms, e 16 passos de 280 ms ficariam aos soluços.
+    O próximo passo automático deriva do estado (`scheduleFor`), por isso uma ação que chegue entretanto (alguém
+    entra ou sai) volta a armá-lo em vez de deixar a mesa parada; as ações de jogador que não são decisões
+    (apostar, recomprar, ficar de fora) só são aceites quando a banca não está a meio de um passo.
+  - **Informação oculta.** A carta tapada vai como `null` até ser revelada e a ordem do sapato nunca sai do
+    servidor; os testes serializam todas as vistas e eventos de milhares de ações e verificam que só aparecem
+    cartas viradas para cima. O sapato é baralhado por um PRNG com a seed secreta tirada do DRBG (como na
+    Fodinha), pelo que cada sessão se reconstrói a partir da seed e do log.
+  - **Validação estatística** (bloqueante, `simulation.test.ts`): bots de estratégia básica em 10 milhões de
+    mãos medem uma vantagem da casa de **0,342% ± 0,065** (aceite: 0,2–0,7%), **4,745%** de blackjacks
+    (4,75 ± 0,2) e **42,3%** de rebentamentos da banca com 6 à vista (42 ± 2); o qui-quadrado da baralhada em
+    100 000 baralhadas dá 2647 para 2601 graus de liberdade. O kit pede 1 milhão de mãos, mas as 7 mãos de uma
+    mesa partilham a banca: medido por lotes, o erro-padrão com 1 milhão é de 0,21 pontos, e o intervalo do kit
+    ficaria a ±1σ. Com 10 milhões (~40 s) o teste decide mesmo alguma coisa.
+  - **Estratégia básica** como dados (`strategy.ts`), testada célula a célula; a desistência é considerada
+    primeiro, exceto num par que a tabela separa (8,8 separa sempre). A dica só existe para as regras em que a
+    tabela é válida (4+ baralhos, S17, DAS, americana); noutras mesas a opção fica bloqueada ao criar a sala.
+  - **Frases da banca** numa tabela (`dealer-lines.ts`): o motor só emite eventos e cada cliente escolhe a frase
+    a partir de uma chave determinística (o mesmo evento dá a mesma frase em todos os ecrãs, nunca duas iguais
+    seguidas). Aparecem num balão por cima da banca em vez de irem para o chat, que guarda só 50 mensagens e
+    ficaria cheio de "Façam as vossas apostas".
+  - **Sair e voltar.** Quem sai e volta à mesma sessão recupera as fichas (sair nunca repõe o stack). Uma sessão
+    terminada sem nenhuma ronda jogada fica registada como `aborted`.
+  - `PLACE_BET` aparece uma vez nas ações válidas, com a aposta mínima: qualquer múltiplo de 10 entre os limites
+    que caiba no stack é aceite.
 #   c a r d - g a m e s  
  

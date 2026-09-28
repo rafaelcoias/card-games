@@ -37,7 +37,7 @@ export const mexicanaActionSchema = z.discriminatedUnion('type', [
   }),
   z.strictObject({ type: z.literal('PLAY_CARDS'), cardIds: z.array(cardIdSchema).min(1).max(8) }),
   z.strictObject({ type: z.literal('PLAY_FACE_DOWN'), position: z.number().int().min(0).max(2) }),
-  z.strictObject({ type: z.literal('PICK_UP_PILE') }),
+  z.strictObject({ type: z.literal('PICK_UP_PILE'), faceUpCardId: cardIdSchema.optional() }),
 ]);
 
 /** Finishing order: first out wins, the last one left loses, everyone else is placed. */
@@ -66,6 +66,7 @@ export function createMexicanaModule(rules: MexicanaRules = DEFAULT_RULES): Mexi
     name: 'Mexicana',
     minPlayers: MIN_PLAYERS,
     maxPlayers: MAX_PLAYERS,
+    lifecycle: 'MATCH',
     configSchema: mexicanaConfigSchema,
     configUi: mexicanaConfigUi,
     actionSchema: mexicanaActionSchema,

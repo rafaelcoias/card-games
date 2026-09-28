@@ -40,6 +40,30 @@ export function createDeck(options: DeckOptions): Card[] {
   return deck;
 }
 
+/**
+ * One physical card of a multi-deck shoe. `id` names the face (what is drawn);
+ * `uid` tells the copies of a face apart: `"AS#3"` is the ace of spades of the
+ * fourth deck. Single-deck games can keep using plain `Card`s.
+ */
+export interface CardInstance extends Card {
+  readonly uid: string;
+}
+
+export interface ShoeOptions {
+  readonly decks: number;
+  /** Jokers per deck (default none). */
+  readonly jokers?: DeckOptions['jokers'];
+}
+
+/** `decks` complete decks, one after the other and unshuffled. */
+export function createShoe({ decks, jokers = 0 }: ShoeOptions): CardInstance[] {
+  if (!Number.isInteger(decks) || decks < 1) throw new RangeError(`A shoe needs 1+ decks, got ${decks}`);
+  const deck = createDeck({ jokers });
+  return Array.from({ length: decks }, (_, index) =>
+    deck.map((card) => ({ ...card, uid: `${card.id}#${index}` })),
+  ).flat();
+}
+
 const CARD_ID_PATTERN = /^(10|[2-9JQKA])([SHDC])$/;
 const JOKER_ID_PATTERN = /^JK[12]$/;
 

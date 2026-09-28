@@ -42,7 +42,10 @@ export interface ActionIndex {
   /** Legal PLAY_CARDS selections keyed by sorted ids. */
   plays: Set<string>;
   faceDownPositions: Set<number>;
+  /** Plain pick-up (hand or face-down layer with no valid play). */
   canPickUp: boolean;
+  /** Face-up cards one of which must go along with the pile (none of them playable). */
+  pickUpWith: Set<string>;
   canChoose: boolean;
 }
 
@@ -54,6 +57,7 @@ export function indexActions(actions: readonly MexicanaAction[]): ActionIndex {
     plays: new Set(),
     faceDownPositions: new Set(),
     canPickUp: false,
+    pickUpWith: new Set(),
     canChoose: false,
   };
   for (const action of actions) {
@@ -66,7 +70,8 @@ export function indexActions(actions: readonly MexicanaAction[]): ActionIndex {
         index.faceDownPositions.add(action.position);
         break;
       case 'PICK_UP_PILE':
-        index.canPickUp = true;
+        if (action.faceUpCardId) index.pickUpWith.add(action.faceUpCardId);
+        else index.canPickUp = true;
         break;
       case 'CHOOSE_FACE_UP':
         index.canChoose = true;

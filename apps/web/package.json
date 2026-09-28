@@ -14,6 +14,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@cardroom/blackjack": "workspace:*",
     "@cardroom/fodinha": "workspace:*",
     "@cardroom/game-core": "workspace:*",
     "@cardroom/high-card": "workspace:*",

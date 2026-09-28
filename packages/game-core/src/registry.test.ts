@@ -12,6 +12,7 @@ const counterGame: GameModule<CounterState, CounterAction, Record<string, never>
   name: 'Counter',
   minPlayers: 1,
   maxPlayers: 2,
+  lifecycle: 'MATCH',
   configSchema: z.object({}).strict(),
   configUi: [],
   actionSchema: z.object({ type: z.literal('INC') }),
@@ -42,6 +43,14 @@ describe('GameRegistry', () => {
     const registry = new GameRegistry().register(counterGame);
     expect(() => registry.register(counterGame)).toThrow(/already registered/);
     expect(() => registry.require('nope')).toThrow(/Unknown game/);
+  });
+
+  it('requires session games to report who is seated', () => {
+    const session = { ...counterGame, id: 'table', lifecycle: 'SESSION' as const };
+    expect(() => new GameRegistry().register(session)).toThrow(/getSeatedPlayers/);
+    const seated = { ...session, getSeatedPlayers: () => ['p1'] };
+    const module = new GameRegistry().register(seated).require('table');
+    expect(module.getSeatedPlayers?.({ value: 0 })).toEqual(['p1']);
   });
 
   it('exposes type-erased modules that still work', () => {

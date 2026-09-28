@@ -3,6 +3,7 @@ import {
   STANDARD_RANKS,
   createDeck,
   createRankComparator,
+  createShoe,
   drawFrom,
   isRedSuit,
   parseCardId,
@@ -28,6 +29,35 @@ describe('createDeck', () => {
     expect(ids).toContain('AS');
     expect(ids).toContain('10H');
     expect(ids).toContain('2C');
+  });
+});
+
+describe('createShoe', () => {
+  it('stacks whole decks and tells the copies of a face apart', () => {
+    const shoe = createShoe({ decks: 6 });
+    expect(shoe).toHaveLength(312);
+    expect(new Set(shoe.map((c) => c.uid)).size).toBe(312);
+    expect(shoe.filter((c) => c.id === 'AS').map((c) => c.uid)).toEqual([
+      'AS#0',
+      'AS#1',
+      'AS#2',
+      'AS#3',
+      'AS#4',
+      'AS#5',
+    ]);
+    for (const rank of STANDARD_RANKS) expect(shoe.filter((c) => c.rank === rank)).toHaveLength(24);
+  });
+
+  it('keeps the face of each card intact', () => {
+    for (const card of createShoe({ decks: 1 })) {
+      expect(card).toEqual({ ...parseCardId(card.id), uid: `${card.id}#0` });
+    }
+    expect(createShoe({ decks: 2, jokers: 2 }).filter((c) => c.rank === 'JOKER')).toHaveLength(4);
+  });
+
+  it('refuses an empty or fractional shoe', () => {
+    expect(() => createShoe({ decks: 0 })).toThrow(RangeError);
+    expect(() => createShoe({ decks: 1.5 })).toThrow(RangeError);
   });
 });
 

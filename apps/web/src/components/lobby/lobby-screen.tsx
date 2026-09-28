@@ -63,7 +63,14 @@ export function LobbyScreen() {
                       <Card faceDown size="xs" className="absolute left-2 top-0.5 rotate-6" label="" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold">{room.gameName}</p>
+                      <p className="font-semibold">
+                        {room.gameName}
+                        {room.inProgress && (
+                          <span className="ml-2 rounded-full bg-success/15 px-2 py-0.5 align-middle text-[11px] font-semibold text-success">
+                            A decorrer · há lugar
+                          </span>
+                        )}
+                      </p>
                       <p className="truncate text-sm text-muted">Anfitrião: {room.hostName}</p>
                     </div>
                     <div className="text-right">

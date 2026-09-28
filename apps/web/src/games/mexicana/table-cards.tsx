@@ -11,6 +11,8 @@ export interface TableCardsProps {
   deal?: { seatIndex: number; seatCount: number } | null;
   /** Which layer is clickable (self only). */
   interactiveLayer?: 'faceUp' | 'faceDown' | null;
+  /** What tapping a face-up card does: play it, or take it to the hand with the pile. */
+  faceUpIntent?: 'play' | 'pickUp';
   playableFaceUp?: Set<string>;
   playableFaceDown?: Set<number>;
   onPlayFaceUp?: (card: Card) => void;
@@ -26,6 +28,7 @@ export function TableCards({
   size,
   deal,
   interactiveLayer = null,
+  faceUpIntent = 'play',
   playableFaceUp,
   playableFaceDown,
   onPlayFaceUp,
@@ -95,6 +98,11 @@ export function TableCards({
                   interactive={Boolean(faceUpPlayable)}
                   state={
                     interactiveLayer === 'faceUp' ? (faceUpPlayable ? 'playable' : 'disabled') : 'normal'
+                  }
+                  label={
+                    faceUpPlayable && faceUpIntent === 'pickUp'
+                      ? `Levar ${cardLabel(faceUp.id)} com a pilha`
+                      : undefined
                   }
                   onClick={faceUpPlayable ? () => onPlayFaceUp?.(faceUp) : undefined}
                   onKeyDown={

@@ -15,6 +15,9 @@ export class GameRegistry {
     if (this.modules.has(module.id)) {
       throw new Error(`Game "${module.id}" is already registered`);
     }
+    if (module.lifecycle === 'SESSION' && !module.getSeatedPlayers) {
+      throw new Error(`Session game "${module.id}" must implement getSeatedPlayers`);
+    }
     this.modules.set(module.id, module);
     return this;
   }

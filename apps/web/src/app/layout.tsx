@@ -14,7 +14,8 @@ const fraunces = Fraunces({
 });
 
 const TITLE = 'Cards — cartas online com amigos';
-const DESCRIPTION = 'Joga Mexicana, Fodinha e outros jogos de cartas em tempo real com os teus amigos.';
+const DESCRIPTION =
+  'Joga Mexicana, Fodinha, Blackjack e outros jogos de cartas em tempo real com os teus amigos.';
 
 // Link previews (WhatsApp, Instagram, …) need absolute URLs; the image itself is
 // app/opengraph-image.jpg, rendered by `pnpm og:render`.

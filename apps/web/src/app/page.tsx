@@ -13,6 +13,15 @@ const FODINHA = [
   { rank: '=', text: 'Empate na carta mais alta: ninguém ganha a vaza' },
 ];
 
+const BLACKJACK = [
+  { rank: '21', text: 'Chega o mais perto possível de 21, sem passar' },
+  { rank: 'A', text: 'O Ás vale 1 ou 11; as figuras valem 10' },
+  { rank: '3:2', text: 'Blackjack (Ás + 10 nas duas primeiras) paga 3 para 2' },
+  { rank: '17', text: 'A banca pede até 16 e fica em todos os 17' },
+  { rank: '×2', text: 'Dobra, separa pares ou desiste a meio' },
+  { rank: '7', text: 'Até 7 à mesa: entra e sai entre rondas' },
+];
+
 const POWERS = [
   { rank: '2', text: 'Reinicia a pilha' },
   { rank: '3', text: 'Espelha a carta de baixo' },
@@ -46,7 +55,7 @@ export default async function HomePage() {
         <section className="mx-auto grid max-w-6xl items-center gap-10 px-4 pb-16 pt-8 sm:px-6 md:grid-cols-2 md:pt-16">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-gold">
-              Mexicana · Fodinha · online · com amigos
+              Mexicana · Fodinha · Blackjack · com amigos
             </p>
             <h1 className="mt-4 font-display text-5xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
               A mesa está posta.
@@ -116,6 +125,28 @@ export default async function HomePage() {
                 </li>
               ))}
             </ul>
+
+            <h2 className="mt-16 font-display text-3xl font-semibold tracking-tight">
+              Blackjack em 30 segundos
+            </h2>
+            <p className="mt-3 max-w-2xl text-muted">
+              Cada um joga contra a banca, não contra os outros. Aposta, recebe duas cartas e pede mais até
+              quereres ficar — ou rebentares. A banca joga sozinha, com regras fixas. A mesa não acaba: entra
+              e sai quando quiseres; no fim conta o saldo de cada um.
+            </p>
+            <ul className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {BLACKJACK.map((p) => (
+                <li key={p.text} className="panel flex items-center gap-4 p-4">
+                  <span className="inline-flex h-14 w-10 shrink-0 items-center justify-center rounded-md bg-ivory font-display text-base font-bold text-[#1a1a1a] shadow">
+                    {p.rank}
+                  </span>
+                  <span className="text-ivory/90">{p.text}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-6 text-sm text-subtle">
+              As fichas são virtuais e não têm valor: não se compram, não se trocam e não dão prémios.
+            </p>
           </div>
         </section>
       </main>

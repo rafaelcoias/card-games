@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { findGameClient } from '@/games/registry';
+import { signedChips } from '@/games/score';
 import type { ResultStyle } from '@/games/types';
 import { useSoundPreference } from '@/games/shared/sounds';
 import { describeError } from '@/lib/errors';
@@ -27,12 +28,25 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
   const sound = useSoundPreference();
   const [chatOpen, setChatOpen] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [ending, setEnding] = useState(false);
   // After the final result there is nothing to abandon: leave without asking.
   const matchOver = result !== null;
   const game = findGameClient(room.gameId);
   const Table = game?.Table;
   const shownResult = useDelayed(result, game?.resultDelayMs ?? 0);
+  // A session table (blackjack) is left like a café table, and only the host closes it.
+  const session = room.lifecycle === 'SESSION';
+  const leaveLabel = session ? 'Sair da mesa' : 'Sair da partida';
+
+  const endSession = async () => {
+    setEnding(true);
+    const ack = await commands.endMatch();
+    setEnding(false);
+    setConfirmEnd(false);
+    if (!ack.ok) toast.error(describeError(ack.error));
+  };
 
   const leave = async () => {
     setLeaving(true);
@@ -62,11 +76,16 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
           <IconButton label="Chat" onClick={() => setChatOpen((o) => !o)} badge={chatOpen ? 0 : unread}>
             💬
           </IconButton>
+          {session && room.hostId === selfId && !matchOver && (
+            <Button size="sm" variant="secondary" onClick={() => setConfirmEnd(true)}>
+              Terminar<span className="hidden sm:inline">&nbsp;sessão</span>
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
             onClick={() => (matchOver ? void leave() : setConfirmLeave(true))}
-            aria-label="Sair da partida"
+            aria-label={leaveLabel}
           >
             <svg
               aria-hidden="true"
@@ -81,7 +100,7 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
               <path d="M8 4H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3M13 13l3-3-3-3M16 10H8" />
             </svg>
             <span className="sm:hidden">Sair</span>
-            <span className="hidden sm:inline">Sair da partida</span>
+            <span className="hidden sm:inline">{leaveLabel}</span>
           </Button>
         </div>
       </header>
@@ -138,12 +157,19 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
       <Modal
         open={confirmLeave}
         onClose={() => !leaving && setConfirmLeave(false)}
-        title="Sair da partida?"
+        title={`${leaveLabel}?`}
         description={
-          <>
-            A partida continua sem ti: a partir de agora o servidor faz as jogadas automáticas por ti até ao
-            fim, por isso é quase certo ficares em <strong className="text-ivory">último lugar</strong>.
-          </>
+          session ? (
+            <>
+              Se tiveres cartas na mesa, as tuas mãos ficam e são pagas normalmente. O teu saldo conta para o
+              resultado da sessão, e podes voltar à mesa enquanto houver lugar.
+            </>
+          ) : (
+            <>
+              A partida continua sem ti: a partir de agora o servidor faz as jogadas automáticas por ti até ao
+              fim, por isso é quase certo ficares em <strong className="text-ivory">último lugar</strong>.
+            </>
+          )
         }
       >
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -151,7 +177,23 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
             Continuar a jogar
           </Button>
           <Button variant="danger" onClick={() => void leave()} loading={leaving}>
-            Sair da partida
+            {leaveLabel}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={confirmEnd}
+        onClose={() => !ending && setConfirmEnd(false)}
+        title="Terminar a sessão?"
+        description="A ronda em curso acaba normalmente; depois a mesa fecha e cada um fica com o seu saldo."
+      >
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="secondary" onClick={() => setConfirmEnd(false)} disabled={ending}>
+            Continuar
+          </Button>
+          <Button variant="danger" onClick={() => void endSession()} loading={ending}>
+            Terminar sessão
           </Button>
         </div>
       </Modal>
@@ -218,7 +260,20 @@ function ResultsModal({ result, style, selfId, leaving, onClose, onLeave }: Resu
   const name = (s: PlayerStanding) => (s.playerId === selfId ? 'Tu' : s.username);
 
   let title = '';
-  if (result?.aborted) title = 'Partida interrompida';
+  let description: string | undefined;
+  if (style === 'chips') {
+    const net = mine?.score ?? 0;
+    title = !mine
+      ? 'Sessão terminada'
+      : net > 0
+        ? `Ficaste a ganhar ${net}! 🎉`
+        : net < 0
+          ? `Ficaste a perder ${-net}`
+          : 'Ficaste como começaste';
+    description = result?.aborted
+      ? 'Ninguém chegou a jogar uma ronda.'
+      : 'Saldo de cada um, com as recompras descontadas. Fichas virtuais, sem valor real.';
+  } else if (result?.aborted) title = 'Partida interrompida';
   else if (style === 'survival') title = mine?.outcome === 'LOSER' ? 'Perdeste…' : 'Sobreviveste! 🎉';
   else if (mine?.outcome === 'LOSER') title = 'Ficaste em último…';
   else if (mine?.outcome === 'WINNER') title = 'Ganhaste! 🎉';
@@ -236,8 +291,32 @@ function ResultsModal({ result, style, selfId, leaving, onClose, onLeave }: Resu
       open={result !== null}
       onClose={onClose}
       title={title}
-      description={result?.aborted ? 'Todos os jogadores restantes saíram.' : nextStarter}
+      description={description ?? (result?.aborted ? 'Todos os jogadores restantes saíram.' : nextStarter)}
     >
+      {result && !result.aborted && style === 'chips' && (
+        <ol className="flex flex-col gap-2">
+          {standings.map((s) => {
+            const score = s.score ?? 0;
+            return (
+              <li
+                key={s.playerId}
+                className={`flex items-center gap-3 rounded-xl px-4 py-2.5 ${s.playerId === selfId ? 'bg-gold/15' : 'bg-surface-2'}`}
+              >
+                <span className="w-8 tabular-nums text-subtle">{s.position}.º</span>
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {s.username}
+                  {s.playerId === selfId && <span className="text-subtle"> (tu)</span>}
+                </span>
+                <span
+                  className={`font-semibold tabular-nums ${score > 0 ? 'text-success' : score < 0 ? 'text-danger' : 'text-muted'}`}
+                >
+                  {signedChips(score)}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
       {result && !result.aborted && style === 'placement' && (
         <ol className="flex flex-col gap-2">
           {standings.map((s) => (

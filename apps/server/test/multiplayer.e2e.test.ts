@@ -13,7 +13,10 @@ import { api, attachBot, createBots, reconnect, startMatch, waitFor, type Bot } 
 
 type MexicanaBot = Bot<MexicanaView, MexicanaAction>;
 
-/** Deterministic, reasonable strategy: lowest single card, else blind card, else pick up. */
+/**
+ * Deterministic, reasonable strategy: lowest single card, else blind card, else pick up
+ * (taking the first face-up card offered when none of them can be played).
+ */
 function chooseAction(view: GameViewMessage<MexicanaView, MexicanaAction>): MexicanaAction | null {
   const actions = view.validActions;
   if (actions.length === 0) return null;

@@ -1,6 +1,6 @@
 'use client';
 
-import type { CardId } from '@cardroom/game-core';
+import type { Card, CardId } from '@cardroom/game-core';
 import type { MexicanaAction } from '@cardroom/mexicana';
 import type { RoomPlayer } from '@cardroom/shared';
 import { type CardSize } from '@cardroom/ui';
@@ -250,6 +250,15 @@ function TableView({
         : 'faceUp'
       : null;
 
+  // No face-up card can be played: tapping one picks up the pile with it.
+  const mustTakeFaceUp = index.pickUpWith.size > 0;
+  const playFaceUp = (card: Card) =>
+    void send(
+      mustTakeFaceUp
+        ? { type: 'PICK_UP_PILE', faceUpCardId: card.id }
+        : { type: 'PLAY_CARDS', cardIds: [card.id] },
+    );
+
   const pendingTimer = timer && timer.playerIds.includes(selfId) ? timer : null;
 
   return (
@@ -304,9 +313,10 @@ function TableView({
               size={sizes.selfTable}
               deal={deal(selfId)}
               interactiveLayer={tableLayer}
-              playableFaceUp={index.playable}
+              faceUpIntent={mustTakeFaceUp ? 'pickUp' : 'play'}
+              playableFaceUp={mustTakeFaceUp ? index.pickUpWith : index.playable}
               playableFaceDown={index.faceDownPositions}
-              onPlayFaceUp={(card) => void send({ type: 'PLAY_CARDS', cardIds: [card.id] })}
+              onPlayFaceUp={playFaceUp}
               onPlayFaceDown={(position) => void send({ type: 'PLAY_FACE_DOWN', position })}
             />
           </div>
@@ -331,6 +341,7 @@ function TableView({
             selectedCount={selectedIds.length}
             selectionPlayable={selectionPlayable}
             canPickUp={index.canPickUp}
+            mustTakeFaceUp={mustTakeFaceUp}
             tableLayer={tableLayer}
             busy={!canAct}
             onSubmit={submit}
@@ -371,6 +382,7 @@ interface ActionBarProps {
   selectedCount: number;
   selectionPlayable: boolean;
   canPickUp: boolean;
+  mustTakeFaceUp: boolean;
   tableLayer: 'faceUp' | 'faceDown' | null;
   busy: boolean;
   onSubmit: () => void;
@@ -389,6 +401,7 @@ function ActionBar({
   selectedCount,
   selectionPlayable,
   canPickUp,
+  mustTakeFaceUp,
   tableLayer,
   busy,
   onSubmit,
@@ -404,6 +417,7 @@ function ActionBar({
     message = chosen ? 'À espera que os outros escolham…' : 'Escolhe 3 cartas para ficarem viradas para cima';
   else if (!isMyTurn) message = currentName ? `Vez de ${currentName}` : 'À espera…';
   else if (canPickUp) message = 'Não tens jogada válida — apanha a pilha';
+  else if (mustTakeFaceUp) message = 'Sem jogada — escolhe a visível que levas com a pilha';
   else if (tableLayer === 'faceDown') message = 'Vira uma carta escondida — às cegas!';
   else if (tableLayer === 'faceUp')
     message = `Joga uma carta visível · ${restrictionHint(scene.restriction, scene.effectiveRank)}`;
@@ -421,7 +435,7 @@ function ActionBar({
           className={clsx('truncate text-sm font-semibold', isMyTurn ? 'text-gold' : 'text-ivory')}
           role="status"
         >
-          {isMyTurn && !canPickUp ? 'A tua vez · ' : ''}
+          {isMyTurn && !canPickUp && !mustTakeFaceUp ? 'A tua vez · ' : ''}
           {message}
         </p>
         {showTimer && (
@@ -440,7 +454,7 @@ function ActionBar({
           Apanhar a pilha
         </Button>
       )}
-      {isMyTurn && !canPickUp && !tableLayer && (
+      {isMyTurn && !canPickUp && !mustTakeFaceUp && !tableLayer && (
         <Button onClick={onSubmit} disabled={!selectionPlayable || busy}>
           {selectedCount > 1 ? `Jogar ${selectedCount}` : 'Jogar'}
         </Button>

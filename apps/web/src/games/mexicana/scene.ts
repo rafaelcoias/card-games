@@ -234,10 +234,18 @@ export function applyEvent(scene: Scene, event: MexicanaEvent): Step {
       const revealedSlot =
         seat?.faceDown.findIndex((slot) => slot !== null && slot !== 'hidden' && revealed.has(slot.id)) ?? -1;
       const revealedId = revealedSlot >= 0 ? (seat?.faceDown[revealedSlot] as Card).id : null;
+      // An unplayable face-up card taken along with the pile leaves its slot too.
+      const takenSlot = event.faceUpSlot ?? -1;
+      const takenId = seat?.faceUp[takenSlot]?.id ?? null;
       const originOf = (card: Card) =>
-        card.id === revealedId ? ANCHORS.slot(event.playerId, revealedSlot) : ANCHORS.discard;
+        card.id === revealedId
+          ? ANCHORS.slot(event.playerId, revealedSlot)
+          : card.id === takenId
+            ? ANCHORS.slot(event.playerId, takenSlot)
+            : ANCHORS.discard;
       const clearRevealed = (seat: SeatScene): SeatScene => ({
         ...seat,
+        faceUp: seat.faceUp.map((card, i) => (i === takenSlot ? null : card)),
         faceDown: seat.faceDown.map((slot) =>
           slot && slot !== 'hidden' && revealed.has(slot.id) ? null : slot,
         ),
@@ -253,6 +261,7 @@ export function applyEvent(scene: Scene, event: MexicanaEvent): Step {
       const waitMs = 340 + Math.min(12, event.cards.length) * 25;
       if (isSelf(event.playerId)) {
         const next = withSeat(cleared, event.playerId, clearRevealed);
+        // The taken face-up card glides from its slot via its shared layoutId, like the pile.
         const collected = event.cards.map((card): SceneCard =>
           card.id === revealedId ? { card, enter: { from: originOf(card), kind: 'pickUp' } } : { card },
         );
@@ -261,7 +270,7 @@ export function applyEvent(scene: Scene, event: MexicanaEvent): Step {
       const flights: FlightRequest[] = event.cards.map((card, i) => ({
         cardId: card.id,
         from: originOf(card),
-        fromRotate: pileRotation(card.id),
+        fromRotate: originOf(card) === ANCHORS.discard ? pileRotation(card.id) : 0,
         to: ANCHORS.seat(event.playerId),
         size: 'md',
         toSize: 'xs',

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import {
   SYSTEM_PLAYER_ID,
+  sessionActions,
   type AnyGameModule,
   type GameRegistry,
   type ScheduledAction,
@@ -14,7 +15,7 @@ import { GAME_REGISTRY } from '../games/tokens';
 import { MatchesRepository, RoomsRepository } from '../persistence/repositories';
 import type { Effects } from '../rooms/effects';
 import { purgeLeftMembers, requireMember } from '../rooms/room.logic';
-import type { RoomRecord, SessionRecord } from '../rooms/room.model';
+import type { RoomMember, RoomRecord, SessionRecord } from '../rooms/room.model';
 import { RoomStore } from '../rooms/room.store';
 import { TimerScheduler, type TimerJob } from '../scheduler/timer.scheduler';
 import { RoomPublisher } from './room-publisher';
@@ -50,12 +51,14 @@ export class GameSessionsService implements OnModuleInit {
   start(room: RoomRecord, effects: Effects): void {
     const module = this.registry.require(room.gameId);
     const config = module.configSchema.parse(room.config) as Record<string, unknown>;
-    const players = [...room.members].sort((a, b) => a.seat - b.seat).map((m) => m.id);
+    const members = [...room.members].sort((a, b) => a.seat - b.seat);
+    const players = members.map((m) => m.id);
     const tableError = module.validateTable?.(config, players.length);
     if (tableError) throw new AppError(tableError.code, tableError.message);
     const seed = generateSeed();
     const state = module.setup(players, config, createDrbgRng(seed), {
       previousResult: room.lastResult ? { standings: room.lastResult.standings } : null,
+      seats: members.map((m) => m.seat),
     });
 
     const session: SessionRecord = {
@@ -65,6 +68,7 @@ export class GameSessionsService implements OnModuleInit {
       state,
       seq: 0,
       players,
+      usernames: Object.fromEntries(members.map((m) => [m.id, m.username])),
       config,
       startedAt: Date.now(),
       deadline: null,
@@ -110,16 +114,67 @@ export class GameSessionsService implements OnModuleInit {
     });
   }
 
-  /** Re-evaluates timers/abort after presence changes (away, left, kicked). */
+  /**
+   * Re-evaluates timers after presence changes (away, left, kicked). With
+   * nobody left at the table a match is aborted, while a session simply ends:
+   * its result stands.
+   */
   onPresenceChanged(room: RoomRecord, effects: Effects): void {
     const session = room.session;
     if (!session) return;
+    const module = this.registry.require(session.gameId);
     const away = this.awayIds(room);
     if (session.players.every((id) => away.has(id))) {
-      this.finish(room, effects, true);
-      return;
+      if (module.lifecycle === 'MATCH') {
+        this.finish(room, effects, true);
+        return;
+      }
+      this.requestEnd(room, module, effects);
+      if (!room.session) return;
     }
-    this.armTimer(room, this.registry.require(session.gameId), effects);
+    this.armTimer(room, module, effects);
+  }
+
+  /** SESSION tables: someone who joined mid-session (or came back) sits down; they play from the next round. */
+  seatPlayer(room: RoomRecord, member: RoomMember, effects: Effects): void {
+    const session = room.session;
+    const module = session && this.registry.require(session.gameId);
+    if (!session || module?.lifecycle !== 'SESSION') return;
+    const firstTime = !Object.hasOwn(session.usernames, member.id);
+    session.usernames[member.id] = member.username;
+    this.apply(room, module, sessionActions.joined(member.id, member.seat), SYSTEM_PLAYER_ID, true, effects);
+    if (firstTime) {
+      const { matchId } = session;
+      const player = { profileId: member.id, username: member.username, seat: member.seat };
+      effects.defer(() => this.matches.addPlayer(matchId, player));
+    }
+  }
+
+  /** SESSION tables: a member who left gives up their seat, at the latest when the round in play ends. */
+  releasePlayer(room: RoomRecord, userId: string, effects: Effects): void {
+    const session = room.session;
+    const module = session && this.registry.require(session.gameId);
+    if (!session || module?.lifecycle !== 'SESSION' || !session.players.includes(userId)) return;
+    this.apply(room, module, sessionActions.left(userId), SYSTEM_PLAYER_ID, true, effects);
+  }
+
+  /** The host ends a SESSION table: at once between rounds, otherwise once the round in play is settled. */
+  endSession(room: RoomRecord, effects: Effects): void {
+    const session = this.requireSession(room);
+    const module = this.registry.require(session.gameId);
+    if (module.lifecycle !== 'SESSION') {
+      throw new AppError(ErrorCode.CannotEnd, 'Only session tables can be ended by the host');
+    }
+    if (session.endRequested)
+      throw new AppError(ErrorCode.CannotEnd, 'The session already ends after this round');
+    this.requestEnd(room, module, effects);
+  }
+
+  private requestEnd(room: RoomRecord, module: AnyGameModule, effects: Effects): void {
+    const session = this.requireSession(room);
+    if (session.endRequested) return;
+    session.endRequested = true;
+    this.apply(room, module, sessionActions.end(), SYSTEM_PLAYER_ID, true, effects);
   }
 
   /** Full resync for one user (join/reconnect). */
@@ -148,6 +203,7 @@ export class GameSessionsService implements OnModuleInit {
     const matchId = session.matchId;
     effects.defer(() => this.matches.appendAction({ matchId, seq, profileId: actor, action, automatic }));
     effects.defer(() => this.publisher.publishEvents(room.id, matchId, seq, result.events));
+    if (module.lifecycle === 'SESSION') this.syncSeats(room, module, effects);
 
     if (module.isFinished(result.state)) {
       this.finish(room, effects, false);
@@ -158,6 +214,16 @@ export class GameSessionsService implements OnModuleInit {
     }
     this.scheduleSystemActions(room, session, result.schedule ?? [], effects);
     this.deferViews(room, effects);
+  }
+
+  /**
+   * SESSION tables: the players are whoever the engine has seated. Views go to
+   * them, and members who left are let go once their seat is free.
+   */
+  private syncSeats(room: RoomRecord, module: AnyGameModule, effects: Effects): void {
+    const session = this.requireSession(room);
+    session.players = module.getSeatedPlayers?.(session.state) ?? session.players;
+    if (purgeLeftMembers(room, session.players)) effects.defer(() => this.publisher.publishRoom(room));
   }
 
   /**
@@ -233,7 +299,10 @@ export class GameSessionsService implements OnModuleInit {
     effects.defer(() => this.scheduler.schedule(job, dueAt));
   }
 
-  /** Deadline expired: play the game's default action for everyone still pending. */
+  /**
+   * Deadline expired: close the phase if the game says how (e.g. bets close),
+   * otherwise play the game's default action for everyone still pending.
+   */
   private async onTurnTimer(job: TimerJob): Promise<void> {
     await this.store
       .mutate(job.roomId, (room, effects) => {
@@ -241,14 +310,14 @@ export class GameSessionsService implements OnModuleInit {
         if (!session || job.token !== `${session.matchId}:${session.timerToken}`) return;
         const module = this.registry.require(session.gameId);
         const tokenBefore = session.timerToken;
-        for (const playerId of module.getPendingPlayers(session.state)) {
-          if (!room.session) break; // a previous default action ended the match
-          const action = module.getDefaultAction(room.session.state, playerId);
-          if (action === null) continue;
-          try {
-            this.apply(room, module, action, playerId, true, effects);
-          } catch (error) {
-            this.logger.error({ err: error, roomId: room.id, playerId }, 'Default action rejected by engine');
+        const closing = module.getTimeoutAction?.(session.state) ?? null;
+        if (closing !== null) {
+          this.applyOnTimeout(room, module, closing, SYSTEM_PLAYER_ID, effects);
+        } else {
+          for (const playerId of module.getPendingPlayers(session.state)) {
+            if (!room.session) break; // a previous default action ended the match
+            const action = module.getDefaultAction(room.session.state, playerId);
+            if (action !== null) this.applyOnTimeout(room, module, action, playerId, effects);
           }
         }
         // Never leave a running match without a timer.
@@ -263,11 +332,31 @@ export class GameSessionsService implements OnModuleInit {
       });
   }
 
-  private finish(room: RoomRecord, effects: Effects, aborted: boolean): void {
+  /** A timeout must never break the timer loop: an engine refusal is logged and the table goes on. */
+  private applyOnTimeout(
+    room: RoomRecord,
+    module: AnyGameModule,
+    action: unknown,
+    actor: string,
+    effects: Effects,
+  ): void {
+    try {
+      this.apply(room, module, action, actor, true, effects);
+    } catch (error) {
+      this.logger.error({ err: error, roomId: room.id, actor }, 'Timeout action rejected by engine');
+    }
+  }
+
+  private finish(room: RoomRecord, effects: Effects, abandoned: boolean): void {
     const session = this.requireSession(room);
     const module = this.registry.require(session.gameId);
-    const standings = aborted ? [] : [...module.getResult(session.state).standings];
-    const names = new Map(room.members.map((m) => [m.id, m.username]));
+    const standings = abandoned ? [] : [...module.getResult(session.state).standings];
+    // A session ended before anyone played a round has no result: it counts as aborted.
+    const aborted = abandoned || standings.length === 0;
+    const names = new Map([
+      ...Object.entries(session.usernames),
+      ...room.members.map((m) => [m.id, m.username] as const),
+    ]);
     const result: MatchResult = {
       matchId: session.matchId,
       aborted,

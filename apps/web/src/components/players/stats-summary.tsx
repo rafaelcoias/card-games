@@ -23,7 +23,9 @@ export function StatsSummary({ stats }: { stats: PlayerStats }) {
               <span className="tabular-nums text-muted">
                 {game(gameId)?.resultStyle === 'survival'
                   ? `${s.played} partidas · ${s.played - s.losses} sobreviveu · ${s.losses} perdeu`
-                  : `${s.played} partidas · ${s.wins} V · ${s.losses} D · ${winRate(s)}%`}
+                  : game(gameId)?.resultStyle === 'chips'
+                    ? `${s.played} ${s.played === 1 ? 'sessão' : 'sessões'}`
+                    : `${s.played} partidas · ${s.wins} V · ${s.losses} D · ${winRate(s)}%`}
               </span>
             </li>
           ))}

@@ -27,6 +27,7 @@ const MESSAGES: Record<string, string> = {
   MIXED_RANKS: 'Só podes jogar cartas do mesmo valor.',
   PICK_UP_NOT_ALLOWED: 'Tens uma jogada válida — não podes apanhar a pilha.',
   MUST_PLAY_FACE_DOWN: 'Só te restam cartas escondidas.',
+  FACE_UP_CARD_REQUIRED: 'Escolhe a carta visível que levas com a pilha.',
   ALREADY_CHOSEN: 'Já escolheste as tuas cartas visíveis.',
   WRONG_PHASE: 'Ação indisponível neste momento.',
   // Fodinha engine
@@ -36,6 +37,24 @@ const MESSAGES: Record<string, string> = {
   INVALID_CARD: 'Essa carta não está na tua mão.',
   BLIND_ROUND: 'Na ronda às cegas as cartas são jogadas automaticamente.',
   TOO_MANY_CARDS: 'Não há cartas que cheguem para tantos jogadores com essa mão máxima.',
+  // Blackjack engine and session tables
+  CANNOT_END: 'A sessão já vai terminar no fim desta ronda.',
+  SESSION_ENDING: 'A sessão já vai terminar no fim desta ronda.',
+  SESSION_OVER: 'A sessão já terminou.',
+  NOT_SEATED: 'Não estás sentado a esta mesa.',
+  SITTING_OUT: 'Estás de fora: volta à mesa para apostar.',
+  ALREADY_BET: 'Já apostaste nesta ronda.',
+  INVALID_BET: 'Aposta fora dos limites da mesa (múltiplos de 10).',
+  NOT_ENOUGH_CHIPS: 'Não tens fichas suficientes.',
+  NO_BET: 'Não tens aposta para limpar.',
+  REBUY_DISABLED: 'Esta mesa não permite recompras.',
+  REBUY_NOT_NEEDED: 'Ainda tens fichas para a aposta mínima.',
+  NO_CHANGE: 'Já está assim.',
+  NO_OFFER: 'Essa oferta já não está disponível.',
+  ILLEGAL_DECISION: 'Essa jogada não é possível com esta mão.',
+  SEAT_TAKEN: 'Esse lugar já está ocupado.',
+  TABLE_LIMITS: 'Os limites da mesa não batem certo com as fichas iniciais.',
+  HINTS_UNSUPPORTED: 'A dica só existe com 4 ou mais baralhos, banca a ficar no 17 mole e carta americana.',
 };
 
 export function describeError(error: ErrorPayload): string {

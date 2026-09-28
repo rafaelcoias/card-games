@@ -6,7 +6,7 @@ import type Redis from 'ioredis';
 import { AppError } from '../common/app-error';
 import { REDIS } from '../redis/redis.module';
 import { Effects } from './effects';
-import { upgradeRoom } from './room.logic';
+import { acceptsPlayers, upgradeRoom } from './room.logic';
 import type { RoomRecord } from './room.model';
 
 const ROOM_TTL_SECONDS = 60 * 60 * 24;
@@ -93,7 +93,7 @@ export class RoomStore {
   }
 
   async save(room: RoomRecord): Promise<void> {
-    const listed = room.status === 'OPEN' && !room.isPrivate && room.members.length < room.maxPlayers;
+    const listed = acceptsPlayers(room) && !room.isPrivate && room.members.length < room.maxPlayers;
     const tx = this.redis
       .multi()
       .set(keys.room(room.id), JSON.stringify(room), 'EX', ROOM_TTL_SECONDS)

@@ -1,4 +1,4 @@
-import type { DomainEvent, GameStanding, Outcome } from '@cardroom/game-core';
+import type { DomainEvent, GameStanding, Lifecycle, Outcome } from '@cardroom/game-core';
 
 export type RoomStatus = 'OPEN' | 'PLAYING' | 'CLOSED';
 
@@ -31,6 +31,8 @@ export interface RoomState {
   code: string;
   gameId: string;
   gameName: string;
+  /** `SESSION` tables take players while they run and end when the host says so. */
+  lifecycle: Lifecycle;
   hostId: string;
   isPrivate: boolean;
   maxPlayers: number;
@@ -87,6 +89,8 @@ export interface PublicRoomSummary {
   hostName: string;
   playerCount: number;
   maxPlayers: number;
+  /** A SESSION table already running, with a free seat to join straight away. */
+  inProgress: boolean;
 }
 
 export interface GameCatalogEntry {

@@ -1,4 +1,4 @@
-import type { ConfigField, ConfigValue, GameError } from '@cardroom/game-core';
+import type { ConfigField, ConfigValue, GameError, Lifecycle } from '@cardroom/game-core';
 import type { Ack, RoomState } from '@cardroom/shared';
 import type { ComponentType } from 'react';
 
@@ -14,6 +14,7 @@ export interface GameRules {
   name: string;
   minPlayers: number;
   maxPlayers: number;
+  lifecycle: Lifecycle;
   configUi: readonly ConfigField[];
   configSchema: { parse(input: unknown): unknown };
   validateTable?(config: never, playerCount: number): GameError | null;
@@ -21,9 +22,9 @@ export interface GameRules {
 
 /**
  * How results read: `placement` games rank everyone (1.º, 2.º…), `survival`
- * games only have losers and survivors.
+ * games only have losers and survivors, `chips` sessions rank by chips won or lost.
  */
-export type ResultStyle = 'placement' | 'survival';
+export type ResultStyle = 'placement' | 'survival' | 'chips';
 
 /** Client-side counterpart of a server `GameModule`: presentation only. */
 export interface GameClientDefinition {
@@ -32,6 +33,8 @@ export interface GameClientDefinition {
   tagline: string;
   minPlayers: number;
   maxPlayers: number;
+  /** `SESSION`: a table people join and leave while it runs, ended by the host. */
+  lifecycle: Lifecycle;
   defaultMaxPlayers: number;
   settings: readonly ConfigField[];
   /** Room settings when the host changes nothing (from the game's schema). */
