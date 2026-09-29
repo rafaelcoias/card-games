@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 
-export type SoundName = 'play' | 'pickUp' | 'burn' | 'yourTurn' | 'chat';
+export type SoundName = 'play' | 'pickUp' | 'burn' | 'splash' | 'yourTurn' | 'chat';
 
 const STORAGE_KEY = 'cardroom:sound';
 
@@ -57,8 +57,36 @@ export function playSound(name: SoundName): void {
     return;
   }
 
+  if (name === 'splash') {
+    // A little splash: water noise falling in pitch, over a "bloop".
+    const buffer = ctx.createBuffer(1, ctx.sampleRate * 0.4, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length) ** 3;
+    const source = ctx.createBufferSource();
+    const filter = ctx.createBiquadFilter();
+    const gain = ctx.createGain();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(2600, now);
+    filter.frequency.exponentialRampToValueAtTime(350, now + 0.35);
+    gain.gain.setValueAtTime(0.22, now);
+    source.buffer = buffer;
+    source.connect(filter).connect(gain).connect(ctx.destination);
+    source.start(now);
+    const bloop = ctx.createOscillator();
+    const bloopGain = ctx.createGain();
+    bloop.type = 'sine';
+    bloop.frequency.setValueAtTime(720, now);
+    bloop.frequency.exponentialRampToValueAtTime(240, now + 0.16);
+    bloopGain.gain.setValueAtTime(0.12, now);
+    bloopGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+    bloop.connect(bloopGain).connect(ctx.destination);
+    bloop.start(now);
+    bloop.stop(now + 0.2);
+    return;
+  }
+
   const tones: Record<
-    Exclude<SoundName, 'burn'>,
+    Exclude<SoundName, 'burn' | 'splash'>,
     { freq: number[]; dur: number; type: OscillatorType; vol: number }
   > = {
     play: { freq: [520], dur: 0.06, type: 'triangle', vol: 0.12 },

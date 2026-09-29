@@ -1,17 +1,20 @@
 import { blackjack } from '@cardroom/blackjack';
 import { fodinha } from '@cardroom/fodinha';
 import type { ConfigValue } from '@cardroom/game-core';
-import { highCard } from '@cardroom/high-card';
+// High Card is retired: Peixinho took its place. Uncomment (here and in the server registry) to bring it back.
+// import { highCard } from '@cardroom/high-card';
 import { mexicana } from '@cardroom/mexicana';
+import { peixinho } from '@cardroom/peixinho';
 import { BlackjackTable } from './blackjack/table';
 import { FodinhaTable } from './fodinha/table';
-import { HighCardTable } from './high-card/table';
+// import { HighCardTable } from './high-card/table';
 import { MexicanaTable } from './mexicana/table';
+import { PeixinhoTable } from './peixinho/table';
 import type { GameClientDefinition, GameRules } from './types';
 
 type Presentation = Pick<
   GameClientDefinition,
-  'tagline' | 'defaultMaxPlayers' | 'resultStyle' | 'resultDelayMs' | 'Table'
+  'tagline' | 'defaultMaxPlayers' | 'resultStyle' | 'resultDelayMs' | 'scoreUnit' | 'resultNote' | 'Table'
 >;
 
 /** Rules, player counts and settings come from the game's own module; the client adds the looks. */
@@ -55,13 +58,23 @@ export const GAME_CLIENTS: GameClientDefinition[] = [
     resultDelayMs: 1200,
     Table: BlackjackTable,
   }),
-  define(highCard, {
-    tagline: 'Um aquecimento rápido: a carta mais alta ganha a ronda.',
+  define(peixinho, {
+    tagline:
+      'Pede cartas aos outros, vai à pesca e junta peixinhos — quatro do mesmo valor. Ganha quem fizer mais.',
     defaultMaxPlayers: 4,
     resultStyle: 'placement',
-    resultDelayMs: 0,
-    Table: HighCardTable,
+    resultDelayMs: 2400,
+    scoreUnit: ['peixinho', 'peixinhos'],
+    resultNote: 'Quem fez menos peixinhos começa a próxima partida.',
+    Table: PeixinhoTable,
   }),
+  // define(highCard, {
+  //   tagline: 'Um aquecimento rápido: a carta mais alta ganha a ronda.',
+  //   defaultMaxPlayers: 4,
+  //   resultStyle: 'placement',
+  //   resultDelayMs: 0,
+  //   Table: HighCardTable,
+  // }),
 ];
 
 export function findGameClient(id: string): GameClientDefinition | undefined {

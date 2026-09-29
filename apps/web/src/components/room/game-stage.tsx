@@ -8,8 +8,8 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { findGameClient } from '@/games/registry';
-import { signedChips } from '@/games/score';
-import type { ResultStyle } from '@/games/types';
+import { formatScore, signedChips } from '@/games/score';
+import type { GameClientDefinition, ResultStyle } from '@/games/types';
 import { useSoundPreference } from '@/games/shared/sounds';
 import { describeError } from '@/lib/errors';
 import { gameFeed } from '@/lib/realtime/game-feed';
@@ -148,6 +148,7 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
       <ResultsModal
         result={shownResult}
         style={game?.resultStyle ?? 'placement'}
+        game={game}
         selfId={selfId}
         leaving={leaving}
         onClose={() => useRealtime.getState().setResult(null)}
@@ -247,13 +248,14 @@ const MEDALS = ['🥇', '🥈', '🥉'];
 interface ResultsModalProps {
   result: MatchResult | null;
   style: ResultStyle;
+  game: GameClientDefinition | undefined;
   selfId: string;
   leaving: boolean;
   onClose: () => void;
   onLeave: () => void;
 }
 
-function ResultsModal({ result, style, selfId, leaving, onClose, onLeave }: ResultsModalProps) {
+function ResultsModal({ result, style, game, selfId, leaving, onClose, onLeave }: ResultsModalProps) {
   const standings = result?.standings ?? [];
   const mine = standings.find((s) => s.playerId === selfId);
   const losers = standings.filter((s) => s.outcome === 'LOSER');
@@ -276,7 +278,9 @@ function ResultsModal({ result, style, selfId, leaving, onClose, onLeave }: Resu
   } else if (result?.aborted) title = 'Partida interrompida';
   else if (style === 'survival') title = mine?.outcome === 'LOSER' ? 'Perdeste…' : 'Sobreviveste! 🎉';
   else if (mine?.outcome === 'LOSER') title = 'Ficaste em último…';
-  else if (mine?.outcome === 'WINNER') title = 'Ganhaste! 🎉';
+  else if (mine?.outcome === 'WINNER')
+    title =
+      standings.filter((s) => s.outcome === 'WINNER').length > 1 ? 'Empate — ganhaste! 🎉' : 'Ganhaste! 🎉';
   else if (result) title = `Terminaste em ${mine?.position ?? '?'}.º`;
 
   const nextStarter =
@@ -284,7 +288,7 @@ function ResultsModal({ result, style, selfId, leaving, onClose, onLeave }: Resu
       ? `${name(losers[0] as PlayerStanding)} ${losers[0]?.playerId === selfId ? 'começas' : 'começa'} a próxima partida.`
       : losers.length > 1
         ? 'Um dos perdedores, à sorte, começa a próxima partida.'
-        : undefined;
+        : game?.resultNote;
 
   return (
     <Modal
@@ -329,6 +333,9 @@ function ResultsModal({ result, style, selfId, leaving, onClose, onLeave }: Resu
               </span>
               <span className="w-8 tabular-nums text-subtle">{s.position}.º</span>
               <span className="font-medium">{s.username}</span>
+              {game?.scoreUnit && s.score !== undefined && (
+                <span className="ml-auto text-sm tabular-nums text-muted">{formatScore(game, s.score)}</span>
+              )}
               {s.outcome === 'LOSER' && <span className="ml-auto text-xs text-danger">perdeu</span>}
             </li>
           ))}

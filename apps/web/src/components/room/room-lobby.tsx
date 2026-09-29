@@ -78,10 +78,7 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
                 ) : null}
                 {s.username}
                 {s.score !== undefined && (
-                  <span className="tabular-nums text-subtle">
-                    {' '}
-                    · {formatScore(game?.resultStyle, s.score)}
-                  </span>
+                  <span className="tabular-nums text-subtle"> · {formatScore(game, s.score)}</span>
                 )}
                 {s.position === undefined && s.outcome === 'LOSER' && ' · perdeu'}
               </span>

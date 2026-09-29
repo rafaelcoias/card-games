@@ -1,9 +1,11 @@
 # Cardroom — jogos de cartas online, em tempo real
 
 Plataforma web para jogar cartas com amigos: contas, salas públicas e privadas, chat e mesas em tempo real
-com um servidor autoritativo. Os jogos são a **Mexicana**, a **Fodinha** (apostar vazas; especificação em `fodinha-kit/`) e o
-**Blackjack** (até 7 contra a banca, com fichas virtuais sem valor real; especificação em `blackjack-kit/`); há também um
-jogo trivial ("Carta Mais Alta") que prova que o núcleo é extensível.
+com um servidor autoritativo. Os jogos são a **Mexicana**, a **Fodinha** (apostar vazas; especificação em `fodinha-kit/`), o
+**Blackjack** (até 7 contra a banca, com fichas virtuais sem valor real; especificação em `blackjack-kit/`) e o
+**Peixinho** (o *Go Fish* português: pedir cartas, ir à pesca e juntar peixinhos; especificação em `peixinho-kit/`).
+O jogo trivial "Carta Mais Alta" (`packages/games/high-card`) está desativado: o registo está comentado no servidor e
+no cliente.
 
 ➡️ **Pôr online: [DEPLOY.md](DEPLOY.md)**. As especificações originais estão em `00-README.md` … `07-PROMPT-COMPLETO.md`.
 
@@ -29,7 +31,8 @@ packages/
     mexicana/   Motor puro da Mexicana (sem I/O)
     fodinha/    Motor puro da Fodinha (sem I/O)
     blackjack/  Motor puro do Blackjack (sem I/O)
-    high-card/  Jogo trivial
+    peixinho/   Motor puro do Peixinho (sem I/O)
+    high-card/  Jogo trivial (desativado)
   ui/         Baralho SVG (sprite + gerador) e componentes animados (Card, CardFan, …)
 firebase.json, firestore.rules, firestore.indexes.json   Configuração Firebase + emuladores
 ```
@@ -133,18 +136,20 @@ persistem em `.firebase-data/`.
 | `pnpm dev` | Tudo em modo desenvolvimento (Turborepo) |
 | `pnpm build` | Build de produção de todos os workspaces |
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Qualidade (ESLint com tipos, TS strict, Prettier) |
-| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
+| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana e do Peixinho e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
 | `pnpm --filter @cardroom/server test:int` | Repositórios Firestore contra o emulador |
 | `pnpm --filter @cardroom/server test:e2e` | Clientes Socket.IO jogam partidas completas (com reconexão) e uma sessão de Blackjack onde se entra e sai a meio (`E2E_SERVER_URLS=url1,url2` reparte por 2 instâncias) |
-| `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe duas partidas completas e uma sessão de Blackjack pela UI |
+| `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe, partidas completas (incluindo o Peixinho a 3, com um recarregar a meio) e uma sessão de Blackjack pela UI |
 | `pnpm emulators` | Emuladores Firebase (Auth + Firestore) |
 | `pnpm firebase:deploy-rules` | Publica `firestore.rules` e os índices no projeto Firebase |
 | `pnpm cards:generate` | Regenera o baralho SVG |
 
 A galeria do baralho (54 cartas + verso) está em **`/dev/cards`**; os estados fixos da mesa da Mexicana
 (escolher visíveis, a jogar, várias iguais, visíveis, às cegas, 6 jogadores) estão em **`/dev/mexicana`**; os estados fixos da mesa da Fodinha (às
-cegas, apostas, empate, resumo, fim, 10 jogadores) estão em **`/dev/fodinha`**, e os do Blackjack (apostas, dica, separação em 3 mãos, seguro, even money,
-peek, banca, liquidação, baralhar, mesa cheia, recompra, entrar a meio) em **`/dev/blackjack`**.
+cegas, apostas, empate, resumo, fim, 10 jogadores) estão em **`/dev/fodinha`**, os do Blackjack (apostas, dica, separação em 3 mãos, seguro, even money,
+peek, banca, liquidação, baralhar, mesa cheia, recompra, entrar a meio) em **`/dev/blackjack`**, e os do Peixinho (pedir,
+"Tenho!", "Vai à pesca!", pescou o pedido, peixinho, reposição, fora de jogo, fim, 6 jogadores, sem memória) em
+**`/dev/peixinho`**.
 
 ## Decisões e notas
 
@@ -222,5 +227,23 @@ peek, banca, liquidação, baralhar, mesa cheia, recompra, entrar a meio) em **`
     terminada sem nenhuma ronda jogada fica registada como `aborted`.
   - `PLACE_BET` aparece uma vez nas ações válidas, com a aposta mínima: qualquer múltiplo de 10 entre os limites
     que caiba no stack é aceite.
+- **Peixinho.** Regras do `peixinho-kit/02` com as propostas por omissão dos pontos em aberto (`09`), sem
+  nenhuma alteração ao núcleo: 2 a 6 jogadores; pescar tocando numa carta do lago (6 s — os 5 s do kit mais o
+  segundo do balão "Vai à pesca!" —, senão automático); memória dos últimos 5 pedidos, com "todos" ou "nenhuma"
+  na sala; a primeira partida começa ao calhas e as seguintes quem fez menos peixinhos (sorteado entre
+  empatados); empate no primeiro lugar é vitória partilhada; ao fim dos 30 s pede-se o valor de que se tem mais
+  cartas (o mais baixo, se empatar) a um adversário ao calhas.
+  - **O servidor responde.** Não há sistema de honra: se o jogador pedido tem o valor, as cartas passam
+    sozinhas. Tocar numa posição do lago é só visual (a carta tirada é sempre a do topo, fixada ao baralhar);
+    as posições (`pondSlots`) servem para todos os ecrãs verem a mesma carta sair do mesmo sítio.
+  - **Informação oculta.** A carta pescada só vai nos eventos quando é o valor pedido; as reposições levam só
+    a contagem. O próprio recebe a carta pela vista (`lastFish`, que descreve apenas a última ação). Os testes
+    serializam todas as vistas e eventos de partidas inteiras à procura de cartas alheias e do lago.
+  - **Fim garantido.** Com o lago vazio, quem fica sem cartas fica fora de jogo e é saltado. A simulação de
+    10 000 partidas (bots ao calhas e bots de memória) verifica a conservação das 52 cartas em cada passo e que
+    todas acabam (média de ~80–90 ações, máximo ~160). Bots que peçam sempre ao mesmo jogador podem andar em
+    círculos com o lago vazio, mas o pedido automático do temporizador escolhe o alvo ao calhas.
+  - **Crianças** (`09` #7): as salas já são privadas por omissão. O chat reduzido a frases pré-definidas mexe
+    na plataforma (chat de todas as salas), por isso ficou de fora.
 #   c a r d - g a m e s  
  

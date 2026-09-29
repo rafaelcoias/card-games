@@ -42,6 +42,10 @@ export interface GameClientDefinition {
   /** Table-size rule shared with the server (e.g. enough cards for everyone). */
   validateTable: (config: Record<string, ConfigValue>, playerCount: number) => GameError | null;
   resultStyle: ResultStyle;
+  /** What a score counts, singular and plural (e.g. peixinhos); penalty points when absent. */
+  scoreUnit?: readonly [string, string];
+  /** Shown under the results when nobody lost (e.g. who starts the next match). */
+  resultNote?: string;
   /** Lets the table finish its last animation before the results pop up. */
   resultDelayMs: number;
   Table: ComponentType<GameTableProps>;

@@ -59,6 +59,9 @@ importers:
       '@cardroom/mexicana':
         specifier: workspace:*
         version: link:../../packages/games/mexicana
+      '@cardroom/peixinho':
+        specifier: workspace:*
+        version: link:../../packages/games/peixinho
       '@cardroom/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -147,6 +150,9 @@ importers:
       '@cardroom/mexicana':
         specifier: workspace:*
         version: link:../../packages/games/mexicana
+      '@cardroom/peixinho':
+        specifier: workspace:*
+        version: link:../../packages/games/peixinho
       '@cardroom/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -298,6 +304,28 @@ importers:
         version: 3.2.7(@types/node@24.19.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
 
   packages/games/mexicana:
+    dependencies:
+      '@cardroom/game-core':
+        specifier: workspace:*
+        version: link:../../game-core
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@types/node':
+        specifier: ^24.19.0
+        version: 24.19.0
+      '@vitest/coverage-v8':
+        specifier: ^3.2.7
+        version: 3.2.7(vitest@3.2.7(@types/node@24.19.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.23.15)(typescript@5.9.3)(yaml@2.9.1)
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@24.19.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+
+  packages/games/peixinho:
     dependencies:
       '@cardroom/game-core':
         specifier: workspace:*

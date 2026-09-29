@@ -1,0 +1,40 @@
+{
+  "name": "@cardroom/peixinho",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pure rules engine for Peixinho, the Portuguese Go Fish.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@cardroom/game-core": "workspace:*",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.0",
+    "@vitest/coverage-v8": "^3.2.7",
+    "tsup": "^8.5.1",
+    "vitest": "^3.2.7"
+  }
+}

@@ -29,7 +29,8 @@ export interface Step<Scene, Fx> {
 export interface Choreography<View, Event extends DomainEvent, Scene extends BaseScene, Fx> {
   /** Scene equal to an authoritative view; `previous` lets it keep card identities for animation. */
   fromView(matchId: string, seq: number, view: View, previous?: Scene | null): Scene;
-  applyEvent(scene: Scene, event: Event): Step<Scene, Fx>;
+  /** One step per event, or several when an event is shown in beats (e.g. cards fan out, then leave). */
+  applyEvent(scene: Scene, event: Event): Step<Scene, Fx> | readonly Step<Scene, Fx>[];
   /** Whether a first view is the opening deal (animated) rather than a resync. */
   isOpeningDeal(message: GameViewMessage<View, unknown>): boolean;
   /** How long a deal animation runs once its cards are on screen. */
@@ -111,13 +112,15 @@ export function useDirector<View, Action, Event extends DomainEvent, Scene exten
         setState((s) => ({ ...s, animating: true, validActions: [], timer: null }));
         let scene = current;
         for (const event of events) {
-          const next = play().applyEvent(scene, event);
-          scene = next.scene;
-          setScene(scene);
-          if (next.flights.length > 0) launchFlights(next.flights);
-          for (const fx of next.fx) fxRef.current(fx);
-          await sleep(next.waitMs * hurry());
-          if (disposed) return;
+          const steps = ([] as Step<Scene, Fx>[]).concat(play().applyEvent(scene, event));
+          for (const next of steps) {
+            scene = next.scene;
+            setScene(scene);
+            if (next.flights.length > 0) launchFlights(next.flights);
+            for (const fx of next.fx) fxRef.current(fx);
+            await sleep(next.waitMs * hurry());
+            if (disposed) return;
+          }
         }
         setScene(play().fromView(message.matchId, message.seq, message.view, scene));
         await settleDeal(hurry());

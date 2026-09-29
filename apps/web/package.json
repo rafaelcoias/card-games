@@ -19,6 +19,7 @@
     "@cardroom/game-core": "workspace:*",
     "@cardroom/high-card": "workspace:*",
     "@cardroom/mexicana": "workspace:*",
+    "@cardroom/peixinho": "workspace:*",
     "@cardroom/shared": "workspace:*",
     "@cardroom/ui": "workspace:*",
     "clsx": "^2.1.1",
