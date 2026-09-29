@@ -117,11 +117,11 @@ export function CreateRoomDialog({ open, onClose }: { open: boolean; onClose: ()
         <Segmented
           legend="Visibilidade"
           options={[
-            { label: 'Privada (só com código)', value: 1 },
-            { label: 'Pública', value: 0 },
+            { label: 'Privada (só com código)', value: 0 },
+            { label: 'Pública', value: 1 },
           ]}
-          value={isPrivate ? 1 : 0}
-          onChange={(v) => setIsPrivate(v === 1)}
+          value={isPrivate ? 0 : 1}
+          onChange={(v) => setIsPrivate(v === 0)}
         />
 
         <div className="flex justify-end gap-2">
