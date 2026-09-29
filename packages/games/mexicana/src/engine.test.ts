@@ -245,7 +245,7 @@ describe('layers', () => {
 describe('finishing', () => {
   it('awards positions in order and the last player loses', () => {
     const state = buildState({
-      players: { p1: { hand: ['KH'] }, p2: { hand: ['4C'] }, p3: { hand: ['AS'] } },
+      players: { p1: { hand: ['KH'] }, p2: { hand: ['4C'], faceDown: ['9D', '2S'] }, p3: { hand: ['AS'] } },
       current: 'p1',
     });
     const s1 = expectOk(play(state, 'p1', 'KH'));
@@ -261,6 +261,12 @@ describe('finishing', () => {
       'GameFinished',
     ]);
     expect(s3.state.phase).toBe('FINISHED');
+    // The loser's face-down cards are turned over for everyone, spectators included.
+    const hidden = s3.state.players.p2!.faceDown;
+    expect(hidden.filter(Boolean)).toHaveLength(2);
+    expect(mexicana.getSpectatorView(s3.state).seats[1]!.revealedFaceDown).toEqual(hidden);
+    expect(mexicana.getPlayerView(s3.state, 'p1').seats[1]!.revealedFaceDown).toEqual(hidden);
+    expect(mexicana.getPlayerView(s2.state, 'p1').seats[1]!.revealedFaceDown).toBeNull();
     expect(mexicana.isFinished(s3.state)).toBe(true);
     expect(mexicana.getResult(s3.state)).toEqual({
       standings: [

@@ -5,9 +5,11 @@ import type { MexicanaSeatView, MexicanaState, MexicanaView } from './types';
 
 /**
  * Filtered projection of the state. Hands of other players are reduced to a
- * count, face-down cards to occupancy flags and the draw pile to its size.
+ * count, face-down cards to occupancy flags (until the game ends, when they are
+ * turned over for everyone) and the draw pile to its size.
  */
 export function getPlayerView(state: MexicanaState, viewerId: PlayerId | null): MexicanaView {
+  const finished = state.phase === 'FINISHED';
   const seats: MexicanaSeatView[] = state.turnOrder.map((id) => {
     const player = state.players[id];
     if (!player) throw new Error(`Inconsistent state: missing player ${id}`);
@@ -16,6 +18,7 @@ export function getPlayerView(state: MexicanaState, viewerId: PlayerId | null): 
       handCount: player.hand.length,
       faceUp: [...player.faceUp],
       faceDown: player.faceDown.map((slot) => slot !== null),
+      revealedFaceDown: finished ? [...player.faceDown] : null,
       hasChosenFaceUp: player.hasChosenFaceUp,
       finishedPosition: player.finishedPosition,
     };

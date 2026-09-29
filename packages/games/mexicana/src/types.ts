@@ -106,6 +106,8 @@ export interface MexicanaSeatView {
   faceUp: Slot[];
   /** `true` where a hidden card still lies. */
   faceDown: boolean[];
+  /** The face-down cards turned over once the game is finished (`null` while it runs). */
+  revealedFaceDown: Slot[] | null;
   hasChosenFaceUp: boolean;
   finishedPosition: number | null;
 }

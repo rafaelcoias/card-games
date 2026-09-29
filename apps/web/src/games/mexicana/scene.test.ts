@@ -16,6 +16,7 @@ function view(overrides: Partial<MexicanaView> = {}): MexicanaView {
         handCount: 2,
         faceUp: [c('KD'), null, null],
         faceDown: [true, true, false],
+        revealedFaceDown: null,
         hasChosenFaceUp: true,
         finishedPosition: null,
       },
@@ -24,6 +25,7 @@ function view(overrides: Partial<MexicanaView> = {}): MexicanaView {
         handCount: 3,
         faceUp: [c('4C'), null, null],
         faceDown: [true, true, true],
+        revealedFaceDown: null,
         hasChosenFaceUp: true,
         finishedPosition: null,
       },
@@ -47,6 +49,21 @@ describe('sceneFromView', () => {
     expect(scene.hand.map((h) => h.card.id)).toEqual(['5H', '9S']);
     expect(seat(scene, 'op').faceDown).toEqual(['hidden', 'hidden', 'hidden']);
     expect(seat(scene, 'me').faceDown).toEqual(['hidden', 'hidden', null]);
+  });
+
+  it('turns the hidden cards over once the game is finished', () => {
+    const base = view();
+    const scene = sceneFromView(
+      'm1',
+      9,
+      view({
+        phase: 'FINISHED',
+        seats: base.seats.map((s) =>
+          s.id === 'op' ? { ...s, revealedFaceDown: [c('7H'), c('JS'), c('2C')] } : s,
+        ),
+      }),
+    );
+    expect(seat(scene, 'op').faceDown).toEqual([c('7H'), c('JS'), c('2C')]);
   });
 
   it('marks never-seen hand cards as drawn from the stock', () => {

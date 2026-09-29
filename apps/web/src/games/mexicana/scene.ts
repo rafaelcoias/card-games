@@ -101,7 +101,10 @@ export function sceneFromView(
       id: seat.id,
       handCount: seat.handCount,
       faceUp: [...seat.faceUp],
-      faceDown: seat.faceDown.map((occupied) => (occupied ? 'hidden' : null)),
+      // Once the game is over the hidden cards are turned over for everyone.
+      faceDown: seat.faceDown.map((occupied, i) =>
+        occupied ? (seat.revealedFaceDown?.[i] ?? 'hidden') : null,
+      ),
       hasChosenFaceUp: seat.hasChosenFaceUp,
       finishedPosition: seat.finishedPosition,
     })),
