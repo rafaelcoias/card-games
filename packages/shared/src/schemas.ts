@@ -24,6 +24,30 @@ export const roomKickSchema = z.strictObject({ playerId: z.string().min(1).max(6
 export const roomChatSchema = z.strictObject({ text: z.string().trim().min(1).max(300) });
 export const gameActionSchema = z.strictObject({ action: z.unknown() });
 
+export const voiceSetSchema = z.strictObject({ enabled: z.boolean() });
+
+/** A WebRTC offer/answer or ICE candidate, relayed as-is to one other member of the room. */
+export const voiceSignalSchema = z
+  .strictObject({
+    to: z.string().min(1).max(128),
+    /** Identifies one peer connection, so a stale signal cannot reach its replacement. */
+    cid: z.string().min(1).max(64),
+    description: z
+      .strictObject({ type: z.enum(['offer', 'answer']), sdp: z.string().min(1).max(16_000) })
+      .optional(),
+    candidate: z
+      .strictObject({
+        candidate: z.string().max(1_000),
+        sdpMid: z.string().max(64).nullable().optional(),
+        sdpMLineIndex: z.number().int().min(0).max(64).nullable().optional(),
+        usernameFragment: z.string().max(256).nullable().optional(),
+      })
+      .optional(),
+  })
+  .refine((s) => (s.description === undefined) !== (s.candidate === undefined), {
+    message: 'Send either a description or a candidate',
+  });
+
 export const usernameSchema = z
   .string()
   .trim()
@@ -40,4 +64,8 @@ export type RoomReadyPayload = z.input<typeof roomReadySchema>;
 export type RoomKickPayload = z.input<typeof roomKickSchema>;
 export type RoomChatPayload = z.input<typeof roomChatSchema>;
 export type GameActionPayload = z.input<typeof gameActionSchema>;
+export type VoiceSetPayload = z.input<typeof voiceSetSchema>;
+export type VoiceSignalPayload = z.output<typeof voiceSignalSchema>;
+/** A relayed signal, as received from `from`. */
+export type VoiceSignal = Omit<VoiceSignalPayload, 'to'> & { from: string };
 export type UpdateProfilePayload = z.input<typeof updateProfileSchema>;

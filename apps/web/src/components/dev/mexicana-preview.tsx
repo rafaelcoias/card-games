@@ -108,6 +108,7 @@ export function MexicanaPreview() {
       connected: id !== 'duarte',
       away: false,
       guest: false,
+      voice: false,
     }));
     return {
       scene: sceneFromView(`dev-${scenario.label}`, 1, engine.getPlayerView(state, ME)),

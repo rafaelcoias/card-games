@@ -6,6 +6,7 @@ import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Modal } from '@/components/ui/modal';
 import { findGameClient } from '@/games/registry';
 import { formatScore, signedChips } from '@/games/score';
@@ -18,6 +19,7 @@ import { useRealtime } from '@/lib/realtime/store';
 import { toast } from '@/lib/toast';
 import { ChatBubbles } from './chat-bubbles';
 import { ChatPanel } from './chat-panel';
+import { MicButton } from './mic-button';
 
 /** Full-screen table for a running match, with chat drawer and end-of-match results. */
 export function GameStage({ room, selfId }: { room: RoomState; selfId: string }) {
@@ -70,6 +72,7 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
           {room.code}
         </span>
         <div className="ml-auto flex items-center gap-1">
+          <MicButton />
           <IconButton label={sound.enabled ? 'Desligar sons' : 'Ligar sons'} onClick={sound.toggle}>
             {sound.enabled ? '🔊' : '🔇'}
           </IconButton>
@@ -199,35 +202,6 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
         </div>
       </Modal>
     </div>
-  );
-}
-
-function IconButton({
-  label,
-  onClick,
-  badge = 0,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  badge?: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      className="relative inline-flex size-9 items-center justify-center rounded-lg text-lg hover:bg-white/10"
-    >
-      <span aria-hidden="true">{children}</span>
-      {badge > 0 && (
-        <span className="absolute right-0.5 top-0.5 min-w-4 rounded-full bg-danger px-1 text-[10px] font-bold leading-4 text-white">
-          {badge > 9 ? '9+' : badge}
-        </span>
-      )}
-    </button>
   );
 }
 

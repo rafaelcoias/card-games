@@ -26,11 +26,14 @@ export class TokenBucket {
 export interface SocketRateLimits {
   general: TokenBucket;
   chat: TokenBucket;
+  /** WebRTC signaling: ICE candidates arrive in bursts, one set per peer. */
+  voice: TokenBucket;
 }
 
 export function createSocketRateLimits(now?: () => number): SocketRateLimits {
   return {
     general: new TokenBucket(30, 15, now),
     chat: new TokenBucket(5, 1, now),
+    voice: new TokenBucket(200, 50, now),
   };
 }

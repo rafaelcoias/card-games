@@ -126,8 +126,14 @@ describe('room membership', () => {
     const r = withMembers('a', 'b', 'c');
     r.status = 'PLAYING';
     r.session = session(['a', 'b', 'c']);
+    r.members[0]!.voice = true;
     removeMember(r, 'a');
-    expect(r.members.find((m) => m.id === 'a')).toMatchObject({ left: true, away: true, connected: false });
+    expect(r.members.find((m) => m.id === 'a')).toMatchObject({
+      left: true,
+      away: true,
+      connected: false,
+      voice: false,
+    });
     expect(r.hostId).toBe('b');
     purgeLeftMembers(r);
     expect(r.members.map((m) => m.id)).toEqual(['b', 'c']);
@@ -184,6 +190,14 @@ describe('projection', () => {
     const state = toRoomState(r, 'Mexicana');
     expect(state).toMatchObject({ gameName: 'Mexicana', lifecycle: 'MATCH', matchId: null, code: 'ABCDEF' });
     expect(Object.keys(state.players[0]!)).not.toContain('disconnectedAt');
+  });
+
+  it('starts with the microphone off, also for members saved before voice existed', () => {
+    const r = withMembers('a', 'b');
+    r.members[0]!.voice = true;
+    delete r.members[1]!.voice;
+    expect(toRoomState(r, 'Mexicana').players.map((p) => p.voice)).toEqual([true, false]);
+    expect(addMember(r, profile('c')).voice).toBe(false);
   });
 });
 

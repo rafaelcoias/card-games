@@ -169,6 +169,7 @@ export function FodinhaPreview() {
       connected: id !== 'gil',
       away: false,
       guest: false,
+      voice: false,
     }));
     return {
       scene: sceneFromView(`dev-${scenario.label}`, 1, view),

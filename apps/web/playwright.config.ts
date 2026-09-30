@@ -18,7 +18,16 @@ export default defineConfig({
     trace: 'retain-on-failure',
     video: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        // Voice chat: a fake microphone, granted without the permission prompt.
+        launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] },
+      },
+    },
+  ],
   // Against a deployed site (E2E_BASE_URL) nothing is started locally.
   webServer: process.env.E2E_BASE_URL
     ? undefined

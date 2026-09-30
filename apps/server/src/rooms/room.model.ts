@@ -16,6 +16,8 @@ export interface RoomMember {
   left: boolean;
   /** Identifies the disconnection a grace timer belongs to. */
   disconnectedAt: number | null;
+  /** Microphone on in the voice chat (absent on members saved before voice existed). */
+  voice?: boolean;
 }
 
 export interface SessionRecord {

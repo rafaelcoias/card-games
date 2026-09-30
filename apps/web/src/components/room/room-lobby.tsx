@@ -16,6 +16,7 @@ import { useRealtime } from '@/lib/realtime/store';
 import { toast } from '@/lib/toast';
 import { PlayerLink } from '@/components/players/player-link';
 import { ChatPanel } from './chat-panel';
+import { MicButton, MicIcon } from './mic-button';
 
 export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string }) {
   const router = useRouter();
@@ -65,7 +66,10 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
             <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight">{room.gameName}</h1>
             <SettingsSummary room={room} game={game} />
           </div>
-          <ShareCode code={room.code} />
+          <div className="flex items-center gap-2">
+            <MicButton size="lg" className="border border-line-strong" />
+            <ShareCode code={room.code} />
+          </div>
         </div>
 
         {room.lastResult && room.lastResult.standings.length > 0 && (
@@ -188,6 +192,12 @@ function PlayerRow({
         <p className="truncate font-medium">
           <PlayerLink username={player.username} guest={player.guest} />{' '}
           {isSelf && <span className="text-subtle">(tu)</span>}
+          {player.voice && (
+            <span className="ml-1 inline-flex align-[-2px] text-gold" title="Microfone ligado">
+              <MicIcon className="size-4" />
+              <span className="sr-only">Microfone ligado</span>
+            </span>
+          )}
         </p>
         <p
           className={clsx(

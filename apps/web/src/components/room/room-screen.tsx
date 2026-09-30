@@ -11,6 +11,7 @@ import { useRoomCommands } from '@/lib/realtime/socket-provider';
 import { useRealtime } from '@/lib/realtime/store';
 import { GameStage } from './game-stage';
 import { RoomLobby } from './room-lobby';
+import { VoiceChat } from './voice-chat';
 
 /** Joins the room by code, then shows the waiting room or the live table. */
 export function RoomScreen({ code }: { code: string }) {
@@ -69,9 +70,14 @@ export function RoomScreen({ code }: { code: string }) {
   }
 
   const showTable = room.status === 'PLAYING' || result !== null;
-  return showTable ? (
-    <GameStage room={room} selfId={profile.id} />
-  ) : (
-    <RoomLobby room={room} selfId={profile.id} />
+  return (
+    <>
+      <VoiceChat room={room} selfId={profile.id} />
+      {showTable ? (
+        <GameStage room={room} selfId={profile.id} />
+      ) : (
+        <RoomLobby room={room} selfId={profile.id} />
+      )}
+    </>
   );
 }

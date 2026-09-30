@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Inject, Logger } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -18,14 +18,18 @@ import {
   roomJoinSchema,
   roomKickSchema,
   roomReadySchema,
+  voiceSetSchema,
+  voiceSignalSchema,
   type Ack,
   type ClientToServerEvents,
   type JoinedRoom,
   type ServerToClientEvents,
+  type VoiceConfig,
 } from '@cardroom/shared';
 import type { Socket } from 'socket.io';
 import { AppError, isExpectedError, toErrorPayload } from '../common/app-error';
 import { TokenVerifier } from '../auth/token-verifier';
+import { ENV, voiceConfig, type Env } from '../config/env';
 import { ProfilesRepository } from '../persistence/repositories';
 import { PresenceService } from '../presence/presence.service';
 import { RoomsService } from '../rooms/rooms.service';
@@ -59,6 +63,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private readonly store: RoomStore,
     private readonly emitter: RealtimeEmitter,
     private readonly presence: PresenceService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   afterInit(server: IoServer): void {
@@ -167,6 +172,31 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     );
     if (!ack.ok) socket.emit('game:error', ack.error);
     return ack;
+  }
+
+  @SubscribeMessage(ClientEvent.VoiceSet)
+  setVoice(@ConnectedSocket() socket: GameSocket, @MessageBody() body: unknown): Promise<Ack<void>> {
+    return this.handle(socket, () =>
+      this.rooms.setVoice(socket.data.profile.id, voiceSetSchema.parse(body).enabled),
+    );
+  }
+
+  @SubscribeMessage(ClientEvent.VoiceConfig)
+  getVoiceConfig(@ConnectedSocket() socket: GameSocket): Promise<Ack<VoiceConfig>> {
+    return this.handle(socket, () => Promise.resolve(voiceConfig(this.env)));
+  }
+
+  /** Fire-and-forget: a lost signal only delays a peer connection, which the client retries. */
+  @SubscribeMessage(ClientEvent.VoiceSignal)
+  async voiceSignal(@ConnectedSocket() socket: GameSocket, @MessageBody() body: unknown): Promise<void> {
+    if (!socket.data.limits.voice.tryTake()) return;
+    const parsed = voiceSignalSchema.safeParse(body);
+    if (!parsed.success) return;
+    await this.rooms
+      .relayVoiceSignal(socket.data.profile.id, parsed.data)
+      .catch((error: unknown) =>
+        this.logger.warn({ err: error, userId: socket.data.profile.id }, 'Voice signal relay failed'),
+      );
   }
 
   private async handle<T>(socket: GameSocket, work: () => Promise<T>): Promise<Ack<T>> {

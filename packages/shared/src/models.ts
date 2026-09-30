@@ -14,6 +14,8 @@ export interface RoomPlayer {
   away: boolean;
   /** Playing as a guest: a temporary name, no account and no public profile. */
   guest: boolean;
+  /** Microphone on: talking in the room's voice chat. */
+  voice: boolean;
 }
 
 export interface PlayerStanding extends GameStanding {
@@ -51,6 +53,11 @@ export interface ChatMessage {
   username: string;
   text: string;
   at: number;
+}
+
+/** ICE servers for the voice chat's peer connections (STUN, plus TURN when configured). */
+export interface VoiceConfig {
+  iceServers: { urls: string[]; username?: string; credential?: string }[];
 }
 
 export interface JoinedRoom {

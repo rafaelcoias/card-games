@@ -8,6 +8,7 @@ import {
   type JoinedRoom,
   type PublicRoomSummary,
   type roomCreateSchema,
+  type VoiceSignalPayload,
 } from '@cardroom/shared';
 import type { z } from 'zod';
 import { AppError } from '../common/app-error';
@@ -185,6 +186,28 @@ export class RoomsService implements OnModuleInit {
     });
   }
 
+  /** Microphone on/off in the room's voice chat (allowed in the lobby and at the table). */
+  async setVoice(userId: string, enabled: boolean): Promise<void> {
+    await this.mutateCurrent(userId, (room, effects) => {
+      const member = requireMember(room, userId);
+      if (member.voice === enabled) return;
+      member.voice = enabled;
+      effects.defer(() => this.publisher.publishRoom(room));
+    });
+  }
+
+  /** Relays WebRTC signaling between two members of the same room; anything else is dropped. */
+  async relayVoiceSignal(fromId: string, signal: VoiceSignalPayload): Promise<void> {
+    const { to, ...rest } = signal;
+    if (to === fromId) return;
+    const [fromRoom, toRoom] = await Promise.all([
+      this.store.getUserRoom(fromId),
+      this.store.getUserRoom(to),
+    ]);
+    if (!fromRoom || fromRoom !== toRoom) return;
+    this.emitter.toUser(to, 'voice:signal', { ...rest, from: fromId });
+  }
+
   /** A socket (re)connected: restore the user's seat if they belong to a room. */
   async onConnected(userId: string): Promise<void> {
     const roomId = await this.store.getUserRoom(userId);
@@ -224,6 +247,8 @@ export class RoomsService implements OnModuleInit {
         if (!member || member.left) return;
         member.connected = false;
         member.disconnectedAt = Date.now();
+        // Peer connections die with the socket; a returning client turns the mic back on itself.
+        member.voice = false;
         const inMatch = room.session?.players.includes(userId) ?? false;
         const graceMs = inMatch ? this.env.RECONNECT_GRACE_MS : LOBBY_GRACE_MS;
         const job: TimerJob = { kind: 'grace', roomId, token: `${userId}:${member.disconnectedAt}` };

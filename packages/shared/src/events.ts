@@ -6,6 +6,7 @@ import type {
   JoinedRoom,
   MatchResult,
   RoomState,
+  VoiceConfig,
 } from './models';
 import type {
   GameActionPayload,
@@ -14,6 +15,9 @@ import type {
   RoomJoinPayload,
   RoomKickPayload,
   RoomReadyPayload,
+  VoiceSetPayload,
+  VoiceSignal,
+  VoiceSignalPayload,
 } from './schemas';
 
 export const ClientEvent = {
@@ -26,6 +30,9 @@ export const ClientEvent = {
   RoomEnd: 'room:end',
   RoomChat: 'room:chat',
   GameAction: 'game:action',
+  VoiceSet: 'voice:set',
+  VoiceConfig: 'voice:config',
+  VoiceSignal: 'voice:signal',
 } as const;
 
 export const ServerEvent = {
@@ -39,6 +46,7 @@ export const ServerEvent = {
   PlayerReconnected: 'player:reconnected',
   PlayerDisconnected: 'player:disconnected',
   SessionReplaced: 'session:replaced',
+  VoiceSignal: 'voice:signal',
 } as const;
 
 /** Typed Socket.IO contract: `io<ServerToClientEvents, ClientToServerEvents>()`. */
@@ -53,6 +61,11 @@ export interface ClientToServerEvents {
   [ClientEvent.RoomEnd]: (ack: AckCallback) => void;
   [ClientEvent.RoomChat]: (payload: RoomChatPayload, ack: AckCallback) => void;
   [ClientEvent.GameAction]: (payload: GameActionPayload, ack: AckCallback) => void;
+  /** Turns the sender's microphone on/off (shown to everyone in the room). */
+  [ClientEvent.VoiceSet]: (payload: VoiceSetPayload, ack: AckCallback) => void;
+  [ClientEvent.VoiceConfig]: (ack: AckCallback<VoiceConfig>) => void;
+  /** WebRTC signaling for another member of the room: fire-and-forget. */
+  [ClientEvent.VoiceSignal]: (payload: VoiceSignalPayload) => void;
 }
 
 export interface ServerToClientEvents {
@@ -66,4 +79,5 @@ export interface ServerToClientEvents {
   [ServerEvent.PlayerReconnected]: (payload: { playerId: string }) => void;
   [ServerEvent.PlayerDisconnected]: (payload: { playerId: string }) => void;
   [ServerEvent.SessionReplaced]: () => void;
+  [ServerEvent.VoiceSignal]: (signal: VoiceSignal) => void;
 }

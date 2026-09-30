@@ -159,6 +159,7 @@ export function PeixinhoPreview() {
       connected: id !== 'eva',
       away: false,
       guest: false,
+      voice: false,
     }));
     const base = sceneFromView(`dev-${scenario.label}`, 1, view);
     const dressed = scenario.dress?.(base, state) ?? {};

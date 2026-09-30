@@ -50,6 +50,7 @@ export function addMember(room: RoomRecord, profile: MemberProfile): RoomMember 
     away: false,
     left: false,
     disconnectedAt: null,
+    voice: false,
   };
   room.members.push(member);
   room.members.sort((a, b) => a.seat - b.seat);
@@ -88,6 +89,7 @@ export function removeMember(room: RoomRecord, userId: string): void {
     member.away = true;
     member.connected = false;
     member.ready = false;
+    member.voice = false;
   } else {
     room.members = room.members.filter((m) => m.id !== userId);
   }
@@ -196,6 +198,7 @@ export function toRoomState(room: RoomRecord, gameName: string): RoomState {
       connected: m.connected,
       away: m.away,
       guest: m.guest === true,
+      voice: m.voice === true,
     })),
     config: room.config,
     matchId: room.session?.matchId ?? null,

@@ -8,6 +8,9 @@ import {
   type JoinedRoom,
   type RoomCreatePayload,
   type ServerToClientEvents,
+  type VoiceConfig,
+  type VoiceSignal,
+  type VoiceSignalPayload,
 } from '@cardroom/shared';
 import { useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -36,6 +39,13 @@ export interface RoomCommands {
   kick: (playerId: string) => Promise<Ack>;
   sendChat: (text: string) => Promise<Ack>;
   sendAction: (action: unknown) => Promise<Ack>;
+  /** Microphone on/off in the room's voice chat. */
+  setVoice: (enabled: boolean) => Promise<Ack>;
+  getVoiceConfig: () => Promise<Ack<VoiceConfig>>;
+  /** WebRTC signaling for another member of the room (fire-and-forget). */
+  sendVoiceSignal: (signal: VoiceSignalPayload) => void;
+  /** Listens for signals from the other members; returns the unsubscribe function. */
+  onVoiceSignal: (handler: (signal: VoiceSignal) => void) => () => void;
   reconnect: () => void;
 }
 
@@ -126,6 +136,17 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       kick: (playerId) => call(() => timed().emitWithAck('room:kick', { playerId })),
       sendChat: (text) => call(() => timed().emitWithAck('room:chat', { text })),
       sendAction: (action) => call(() => timed().emitWithAck('game:action', { action })),
+      setVoice: (enabled) => call(() => timed().emitWithAck('voice:set', { enabled })),
+      getVoiceConfig: () => call(() => timed().emitWithAck('voice:config')),
+      sendVoiceSignal: (signal) => {
+        socket.emit('voice:signal', signal);
+      },
+      onVoiceSignal: (handler) => {
+        socket.on('voice:signal', handler);
+        return () => {
+          socket.off('voice:signal', handler);
+        };
+      },
       reconnect: () => {
         useRealtime.getState().setStatus('connecting');
         socket.connect();

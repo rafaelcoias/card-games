@@ -1,3 +1,4 @@
+import type { VoiceConfig } from '@cardroom/shared';
 import { z } from 'zod';
 
 const envSchema = z
@@ -20,6 +21,11 @@ const envSchema = z
     RECONNECT_GRACE_MS: z.coerce.number().int().min(5_000).default(60_000),
     /** Delay before the server plays for an away player, so humans can follow what happened. */
     AWAY_ACTION_DELAY_MS: z.coerce.number().int().min(0).default(1_200),
+
+    /** Voice chat relay for players whose network blocks peer-to-peer audio (comma-separated `turn:` URLs). */
+    VOICE_TURN_URLS: z.string().min(1).optional(),
+    VOICE_TURN_USERNAME: z.string().min(1).optional(),
+    VOICE_TURN_CREDENTIAL: z.string().min(1).optional(),
   })
   .superRefine((env, ctx) => {
     if (!env.FIREBASE_SERVICE_ACCOUNT && !env.FIREBASE_PROJECT_ID) {
@@ -56,6 +62,25 @@ export function allowedOrigins(env: Env): string[] {
   return env.WEB_ORIGIN.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
+}
+
+const DEFAULT_STUN_URLS = ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'];
+
+/** ICE servers handed to browsers for the voice chat: public STUN, plus TURN when configured. */
+export function voiceConfig(env: Env): VoiceConfig {
+  const iceServers: VoiceConfig['iceServers'] = [{ urls: DEFAULT_STUN_URLS }];
+  const turnUrls = (env.VOICE_TURN_URLS ?? '')
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
+  if (turnUrls.length > 0) {
+    iceServers.push({
+      urls: turnUrls,
+      username: env.VOICE_TURN_USERNAME,
+      credential: env.VOICE_TURN_CREDENTIAL,
+    });
+  }
+  return { iceServers };
 }
 
 export function usesEmulators(env: Env): boolean {
