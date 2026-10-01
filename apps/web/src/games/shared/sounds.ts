@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 
-export type SoundName = 'play' | 'pickUp' | 'burn' | 'splash' | 'yourTurn' | 'chat';
+export type SoundName = 'play' | 'pickUp' | 'burn' | 'splash' | 'doubt' | 'yourTurn' | 'chat';
 
 const STORAGE_KEY = 'cardroom:sound';
 
@@ -90,6 +90,7 @@ export function playSound(name: SoundName): void {
     { freq: number[]; dur: number; type: OscillatorType; vol: number }
   > = {
     play: { freq: [520], dur: 0.06, type: 'triangle', vol: 0.12 },
+    doubt: { freq: [392, 262], dur: 0.11, type: 'square', vol: 0.08 },
     pickUp: { freq: [300, 220], dur: 0.12, type: 'sine', vol: 0.14 },
     yourTurn: { freq: [660, 880], dur: 0.12, type: 'sine', vol: 0.1 },
     chat: { freq: [990], dur: 0.05, type: 'triangle', vol: 0.07 },

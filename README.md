@@ -2,8 +2,10 @@
 
 Plataforma web para jogar cartas com amigos: contas, salas públicas e privadas, chat e mesas em tempo real
 com um servidor autoritativo. Os jogos são a **Mexicana**, a **Fodinha** (apostar vazas; especificação em `fodinha-kit/`), o
-**Blackjack** (até 7 contra a banca, com fichas virtuais sem valor real; especificação em `blackjack-kit/`) e o
-**Peixinho** (o *Go Fish* português: pedir cartas, ir à pesca e juntar peixinhos; especificação em `peixinho-kit/`).
+**Blackjack** (até 7 contra a banca, com fichas virtuais sem valor real; especificação em `blackjack-kit/`), o
+**Peixinho** (o *Go Fish* português: pedir cartas, ir à pesca e juntar peixinhos; especificação em `peixinho-kit/`) e o
+**Desconfia** (o jogo da mentira: pousar cartas viradas para baixo, anunciar o valor e desconfiar dos outros;
+especificação em `desconfia-kit/`).
 O jogo trivial "Carta Mais Alta" (`packages/games/high-card`) está desativado: o registo está comentado no servidor e
 no cliente.
 
@@ -32,6 +34,7 @@ packages/
     fodinha/    Motor puro da Fodinha (sem I/O)
     blackjack/  Motor puro do Blackjack (sem I/O)
     peixinho/   Motor puro do Peixinho (sem I/O)
+    desconfia/  Motor puro do Desconfia (sem I/O)
     high-card/  Jogo trivial (desativado)
   ui/         Baralho SVG (sprite + gerador) e componentes animados (Card, CardFan, …)
 firebase.json, firestore.rules, firestore.indexes.json   Configuração Firebase + emuladores
@@ -136,10 +139,10 @@ persistem em `.firebase-data/`.
 | `pnpm dev` | Tudo em modo desenvolvimento (Turborepo) |
 | `pnpm build` | Build de produção de todos os workspaces |
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Qualidade (ESLint com tipos, TS strict, Prettier) |
-| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana e do Peixinho e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
+| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana, do Peixinho e do Desconfia e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
 | `pnpm --filter @cardroom/server test:int` | Repositórios Firestore contra o emulador |
 | `pnpm --filter @cardroom/server test:e2e` | Clientes Socket.IO jogam partidas completas (com reconexão) e uma sessão de Blackjack onde se entra e sai a meio (`E2E_SERVER_URLS=url1,url2` reparte por 2 instâncias) |
-| `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe, partidas completas (incluindo o Peixinho a 3, com um recarregar a meio) e uma sessão de Blackjack pela UI |
+| `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe, partidas completas (incluindo o Peixinho a 3 e o Desconfia a 4, com um recarregar a meio) e uma sessão de Blackjack pela UI |
 | `pnpm emulators` | Emuladores Firebase (Auth + Firestore) |
 | `pnpm firebase:deploy-rules` | Publica `firestore.rules` e os índices no projeto Firebase |
 | `pnpm cards:generate` | Regenera o baralho SVG |
@@ -149,7 +152,8 @@ A galeria do baralho (54 cartas + verso) está em **`/dev/cards`**; os estados f
 cegas, apostas, empate, resumo, fim, 10 jogadores) estão em **`/dev/fodinha`**, os do Blackjack (apostas, dica, separação em 3 mãos, seguro, even money,
 peek, banca, liquidação, baralhar, mesa cheia, recompra, entrar a meio) em **`/dev/blackjack`**, e os do Peixinho (pedir,
 "Tenho!", "Vai à pesca!", pescou o pedido, peixinho, reposição, fora de jogo, fim, 6 jogadores, sem memória) em
-**`/dev/peixinho`**.
+**`/dev/peixinho`**, e os do Desconfia (pilha nova, pilha em curso, à espera, desconfiar, mentira, verdade, peixinho,
+última carta, fim, 8 jogadores) em **`/dev/desconfia`**.
 
 ## Decisões e notas
 
@@ -245,5 +249,26 @@ peek, banca, liquidação, baralhar, mesa cheia, recompra, entrar a meio) em **`
     círculos com o lago vazio, mas o pedido automático do temporizador escolhe o alvo ao calhas.
   - **Crianças** (`09` #7): as salas já são privadas por omissão. O chat reduzido a frases pré-definidas mexe
     na plataforma (chat de todas as salas), por isso ficou de fora.
+- **Desconfia.** Regras do `desconfia-kit/02` com as propostas por omissão dos pontos em aberto (`09`), sem
+  nenhuma alteração ao núcleo: 54 cartas (com os 2 jokers), todas distribuídas; começa quem recebe o 3♣; 2 a 8
+  jogadores; peixinhos só nas mãos e só com cartas naturais; a partida acaba no primeiro sem cartas, ou "até ao
+  fim" como opção da sala (o último perde); ao fim dos 30 s joga-se uma carta, do valor da pilha se houver.
+  - **Janela de desconfiança sem relógio no motor.** Cada jogada abre uma janela presa ao seu `playId`: o motor
+    agenda `SYS_WINDOW_MIN_ELAPSED` (2 s; até lá o seguinte não joga e não corre temporizador) ou, se a jogada
+    esvaziou a mão, `SYS_LAST_CARD_WINDOW_CLOSED` (3 s, e só então ganha). Cada `DOUBT` nomeia a jogada: uma
+    desconfiança atrasada nunca acerta numa jogada mais nova. Todas as ações de uma sala passam numa só fila
+    (cadeia local + lock em Redis), por isso de 5 desconfianças no mesmo instante só a primeira conta — o e2e
+    de sockets prova-o.
+  - **Mentir é parte do jogo.** O servidor aceita quaisquer cartas da mão com o valor anunciado; o número é
+    sempre verdadeiro. As ações válidas listam uma jogada de uma carta por carta da mão (dizem ao cliente que
+    pode jogar e com que valor) — as combinações não se podem enumerar.
+  - **Informação oculta.** As jogadas vão como quem / quantas / que valor; só a jogada posta em causa é virada
+    (`lastReveal`, até à jogada seguinte). As cartas que o próprio jogou também não vão nos eventos: a mesa
+    lembra-se do que enviou para as fazer deslizar da mão. Os testes serializam todas as vistas e eventos.
+  - **Sem cartas por um peixinho.** Caso que o kit não cobre: quem perde uma desconfiança e fica com a mão vazia
+    porque a pilha lhe completou peixinhos também ficou sem cartas, por isso conta como fora (ganha, ou fica
+    com a posição seguinte).
+  - **Simulação.** 10 000 partidas de 3 a 8 bots, com vontade de mentir e de desconfiar diferente em cada uma,
+    verificam a conservação das 54 cartas em cada passo; acabam todas (média ~115 ações, máximo ~680).
 #   c a r d - g a m e s  
  

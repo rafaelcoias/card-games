@@ -12,3 +12,6 @@ Jogos de bebida
 
 1. Piramide
 2. Corrida de cavalos
+
+take your time and implement desconfia-kit. analyse the files and then make sure to integrate the new game into the web app. really take your time to make sure you undrrstand the whole game and can build it and make it smooth like the other ones.
+when you finish, commit and push all

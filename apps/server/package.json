@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@cardroom/blackjack": "workspace:*",
+    "@cardroom/desconfia": "workspace:*",
     "@cardroom/fodinha": "workspace:*",
     "@cardroom/game-core": "workspace:*",
     "@cardroom/high-card": "workspace:*",

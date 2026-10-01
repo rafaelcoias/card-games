@@ -55,6 +55,24 @@ const MESSAGES: Record<string, string> = {
   SEAT_TAKEN: 'Esse lugar já está ocupado.',
   TABLE_LIMITS: 'Os limites da mesa não batem certo com as fichas iniciais.',
   HINTS_UNSUPPORTED: 'A dica só existe com 4 ou mais baralhos, banca a ficar no 17 mole e carta americana.',
+  // Peixinho engine
+  MUST_FISH: 'Vai primeiro à pesca: toca numa carta do lago.',
+  CANNOT_ASK_SELF: 'Pede a outro jogador.',
+  UNKNOWN_TARGET: 'Esse jogador não está à mesa.',
+  TARGET_EMPTY: 'Esse jogador já não tem cartas.',
+  RANK_NOT_IN_HAND: 'Só podes pedir um valor que tenhas na mão.',
+  NOT_FISHING: 'Ninguém te mandou à pesca.',
+  INVALID_POND_POSITION: 'Já não há carta nesse sítio do lago.',
+  GAME_OVER: 'A partida já terminou.',
+  // Desconfia engine
+  TOO_SOON: 'Espera um instante: os outros ainda podem desconfiar da jogada anterior.',
+  NO_CARDS: 'Escolhe pelo menos uma carta.',
+  INVALID_CLAIM: 'Escolhe o valor a anunciar.',
+  WRONG_CLAIM: 'A pilha está noutro valor: tens de anunciar esse.',
+  LAST_CARD_OPEN: 'Espera: há uma última carta à espera de quem desconfie.',
+  DOUBT_CLOSED: 'Tarde demais: essa jogada já não pode ser posta em causa.',
+  CANNOT_DOUBT_SELF: 'Não podes desconfiar da tua própria jogada.',
+  NOT_PLAYING: 'Já ficaste sem cartas.',
 };
 
 export function describeError(error: ErrorPayload): string {

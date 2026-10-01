@@ -1,4 +1,5 @@
 import { blackjack } from '@cardroom/blackjack';
+import { desconfia } from '@cardroom/desconfia';
 import { fodinha } from '@cardroom/fodinha';
 import type { ConfigValue } from '@cardroom/game-core';
 // High Card is retired: Peixinho took its place. Uncomment (here and in the server registry) to bring it back.
@@ -6,6 +7,7 @@ import type { ConfigValue } from '@cardroom/game-core';
 import { mexicana } from '@cardroom/mexicana';
 import { peixinho } from '@cardroom/peixinho';
 import { BlackjackTable } from './blackjack/table';
+import { DesconfiaTable } from './desconfia/table';
 import { FodinhaTable } from './fodinha/table';
 // import { HighCardTable } from './high-card/table';
 import { MexicanaTable } from './mexicana/table';
@@ -67,6 +69,16 @@ export const GAME_CLIENTS: GameClientDefinition[] = [
     scoreUnit: ['peixinho', 'peixinhos'],
     resultNote: 'Quem fez menos peixinhos começa a próxima partida.',
     Table: PeixinhoTable,
+  }),
+  define(desconfia, {
+    tagline:
+      'O jogo da mentira: pousa cartas viradas para baixo, anuncia o valor — verdade ou não — e desconfia dos outros.',
+    defaultMaxPlayers: 5,
+    resultStyle: 'placement',
+    resultDelayMs: 2600,
+    scoreUnit: ['carta', 'cartas'],
+    resultNote: 'Começa a próxima partida quem receber o 3 de paus.',
+    Table: DesconfiaTable,
   }),
   // define(highCard, {
   //   tagline: 'Um aquecimento rápido: a carta mais alta ganha a ronda.',
