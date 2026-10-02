@@ -12,12 +12,16 @@ export function signedChips(amount: number): string {
   return `${signed(amount)} ${Math.abs(amount) === 1 ? 'ficha' : 'fichas'}`;
 }
 
-/** A result's score as its game reads it: chips won or lost, what was collected, or penalty points. */
+/** `+4 pts`, `−2 pts`, `0 pts`. */
+export const signedPoints = (amount: number): string => `${signed(amount)} pts`;
+
+/** A result's score as its game reads it: chips or points won or lost, what was collected, or penalty points. */
 export function formatScore(
   game: Pick<GameClientDefinition, 'resultStyle' | 'scoreUnit'> | undefined,
   score: number,
 ): string {
   if (game?.resultStyle === 'chips') return signedChips(score);
+  if (game?.resultStyle === 'points') return signedPoints(score);
   if (game?.scoreUnit) return `${score} ${score === 1 ? game.scoreUnit[0] : game.scoreUnit[1]}`;
   return `${score} pts`;
 }

@@ -3,9 +3,10 @@
 Plataforma web para jogar cartas com amigos: contas, salas públicas e privadas, chat e mesas em tempo real
 com um servidor autoritativo. Os jogos são a **Mexicana**, a **Fodinha** (apostar vazas; especificação em `fodinha-kit/`), o
 **Blackjack** (até 7 contra a banca, com fichas virtuais sem valor real; especificação em `blackjack-kit/`), o
-**Peixinho** (o *Go Fish* português: pedir cartas, ir à pesca e juntar peixinhos; especificação em `peixinho-kit/`) e o
+**Peixinho** (o *Go Fish* português: pedir cartas, ir à pesca e juntar peixinhos; especificação em `peixinho-kit/`), o
 **Desconfia** (o jogo da mentira: pousar cartas viradas para baixo, anunciar o valor e desconfiar dos outros;
-especificação em `desconfia-kit/`).
+especificação em `desconfia-kit/`) e o **Olho** (o *Presidente* português: livrar-se das cartas primeiro, ganhar um
+cargo e trocar cartas no jogo seguinte, numa mesa contínua; especificação em `olho-kit/`).
 O jogo trivial "Carta Mais Alta" (`packages/games/high-card`) está desativado: o registo está comentado no servidor e
 no cliente.
 
@@ -35,6 +36,7 @@ packages/
     blackjack/  Motor puro do Blackjack (sem I/O)
     peixinho/   Motor puro do Peixinho (sem I/O)
     desconfia/  Motor puro do Desconfia (sem I/O)
+    olho/       Motor puro do Olho (sem I/O)
     high-card/  Jogo trivial (desativado)
   ui/         Baralho SVG (sprite + gerador) e componentes animados (Card, CardFan, …)
 firebase.json, firestore.rules, firestore.indexes.json   Configuração Firebase + emuladores
@@ -139,10 +141,10 @@ persistem em `.firebase-data/`.
 | `pnpm dev` | Tudo em modo desenvolvimento (Turborepo) |
 | `pnpm build` | Build de produção de todos os workspaces |
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Qualidade (ESLint com tipos, TS strict, Prettier) |
-| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana, do Peixinho e do Desconfia e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
+| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana, do Peixinho, do Desconfia e do Olho e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
 | `pnpm --filter @cardroom/server test:int` | Repositórios Firestore contra o emulador |
-| `pnpm --filter @cardroom/server test:e2e` | Clientes Socket.IO jogam partidas completas (com reconexão) e uma sessão de Blackjack onde se entra e sai a meio (`E2E_SERVER_URLS=url1,url2` reparte por 2 instâncias) |
-| `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe, partidas completas (incluindo o Peixinho a 3 e o Desconfia a 4, com um recarregar a meio) e uma sessão de Blackjack pela UI |
+| `pnpm --filter @cardroom/server test:e2e` | Clientes Socket.IO jogam partidas completas (com reconexão) e sessões de Blackjack e de Olho onde se entra e sai a meio (`E2E_SERVER_URLS=url1,url2` reparte por 2 instâncias) |
+| `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe, partidas completas (incluindo o Peixinho a 3 e o Desconfia a 4, com um recarregar a meio) e sessões de Blackjack e de Olho pela UI |
 | `pnpm emulators` | Emuladores Firebase (Auth + Firestore) |
 | `pnpm firebase:deploy-rules` | Publica `firestore.rules` e os índices no projeto Firebase |
 | `pnpm cards:generate` | Regenera o baralho SVG |
@@ -152,8 +154,10 @@ A galeria do baralho (54 cartas + verso) está em **`/dev/cards`**; os estados f
 cegas, apostas, empate, resumo, fim, 10 jogadores) estão em **`/dev/fodinha`**, os do Blackjack (apostas, dica, separação em 3 mãos, seguro, even money,
 peek, banca, liquidação, baralhar, mesa cheia, recompra, entrar a meio) em **`/dev/blackjack`**, e os do Peixinho (pedir,
 "Tenho!", "Vai à pesca!", pescou o pedido, peixinho, reposição, fora de jogo, fim, 6 jogadores, sem memória) em
-**`/dev/peixinho`**, e os do Desconfia (pilha nova, pilha em curso, à espera, desconfiar, mentira, verdade, peixinho,
-última carta, fim, 8 jogadores) em **`/dev/desconfia`**.
+**`/dev/peixinho`**, os do Desconfia (pilha nova, pilha em curso, à espera, desconfiar, mentira, verdade, peixinho,
+última carta, fim, 8 jogadores) em **`/dev/desconfia`**, e os do Olho (abrir, seguir com par, salto com escape, saltado,
+quatro iguais, joker, ninguém bateu, troca do Presidente, troca do Olho, resumo, bloqueado, 8 jogadores) em
+**`/dev/olho`**.
 
 ## Decisões e notas
 
@@ -270,5 +274,27 @@ peek, banca, liquidação, baralhar, mesa cheia, recompra, entrar a meio) em **`
     com a posição seguinte).
   - **Simulação.** 10 000 partidas de 3 a 8 bots, com vontade de mentir e de desconfiar diferente em cada uma,
     verificam a conservação das 54 cartas em cada passo; acabam todas (média ~115 ações, máximo ~680).
+- **Olho.** Regras do `olho-kit/02` (v1.3, fechadas), sem nenhuma alteração ao núcleo: 54 cartas, 3 a 8 jogadores,
+  todas as opções da sala do kit (acabar com 2/joker, quatro seguidos cortam, escapar ao salto, primeira vaza sem 2
+  nem joker, tempos de 30/5/20 s). É uma mesa contínua (`SESSION`), como o Blackjack.
+  - **Troca sem batota.** O servidor escolhe as melhores cartas de quem dá (joker, 2, Ás…; empates pelo naipe). A
+    distribuição fica 2,2 s na mesa antes de as cartas saírem (`SYS_EXCHANGE_GIVE`), para se ver a mão inteira; depois
+    o Presidente e o Vice-Presidente escolhem o que devolvem, em simultâneo, com 20 s (ao fim, as mais baixas). As
+    cartas trocadas só vão na vista dos dois da troca (`exchange.mine`), que a guardam até ao fim da primeira vaza.
+  - **Ritmo no motor.** Uma vaza decidida fica na mesa (`trick.closing`) e só sai com `SYS_CLOSE_TRICK`: 1,5 s depois
+    de um corte (carimbo + recolha), 1,1 s quando todos passaram. O resumo do jogo dura 4,5 s. Como no Blackjack, o
+    próximo passo automático deriva do estado (`scheduleFor`).
+  - **Casos que o kit não cobre**, decididos e testados: quando a vez voltaria a quem jogou por último — todos os
+    outros passaram ou foram saltados — a vaza é dele; quem só tem um 2/joker com a opção desligada é saltado
+    automaticamente (e o jogo acaba se só restarem bloqueados); se o Olho anterior saiu, começa o pior classificado que
+    ainda está à mesa; quem sai e volta antes do fim do jogo retoma as suas cartas; com menos de 3 sentados a mesa
+    espera (`WAITING`) e recomeça quando alguém se senta.
+  - **Terminar a sessão** é imediato: o jogo em curso não conta. O resultado ordena por pontos (empates partilham o
+    lugar); quem tem mais ganha, quem tem menos perde, e uma sessão toda empatada não tem vencedor. Sem nenhum jogo
+    terminado, fica `aborted`.
+  - **Textos neutros.** "Perde a vez" em vez de "saltado/saltada", "Bloqueio · só 2/joker" em vez de "bloqueado/a".
+  - **Simulação.** 10 000 jogos de 3 a 8 bots ao calhas, com as opções da sala sorteadas e, em parte das sessões,
+    jogadores a entrar e a sair a meio, verificam em cada passo a conservação das 54 cartas, que quem tem a vez pode
+    jogar e que não há 2 nem joker na primeira vaza; acabam todos com os cargos atribuídos (média ~120 ações).
 #   c a r d - g a m e s  
  

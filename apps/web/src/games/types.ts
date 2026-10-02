@@ -22,9 +22,10 @@ export interface GameRules {
 
 /**
  * How results read: `placement` games rank everyone (1.º, 2.º…), `survival`
- * games only have losers and survivors, `chips` sessions rank by chips won or lost.
+ * games only have losers and survivors, `chips` sessions rank by chips won or
+ * lost, `points` sessions by points won or lost over their games (Olho).
  */
-export type ResultStyle = 'placement' | 'survival' | 'chips';
+export type ResultStyle = 'placement' | 'survival' | 'chips' | 'points';
 
 /** Client-side counterpart of a server `GameModule`: presentation only. */
 export interface GameClientDefinition {

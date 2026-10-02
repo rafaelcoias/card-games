@@ -21,6 +21,7 @@
     "@cardroom/game-core": "workspace:*",
     "@cardroom/high-card": "workspace:*",
     "@cardroom/mexicana": "workspace:*",
+    "@cardroom/olho": "workspace:*",
     "@cardroom/peixinho": "workspace:*",
     "@cardroom/shared": "workspace:*",
     "@nestjs/common": "^11.2.6",

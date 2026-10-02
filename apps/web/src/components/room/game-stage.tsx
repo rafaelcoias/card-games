@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal } from '@/components/ui/modal';
 import { findGameClient } from '@/games/registry';
-import { formatScore, signedChips } from '@/games/score';
+import { formatScore, signedChips, signedPoints } from '@/games/score';
 import type { GameClientDefinition, ResultStyle } from '@/games/types';
 import { useSoundPreference } from '@/games/shared/sounds';
 import { describeError } from '@/lib/errors';
@@ -163,7 +163,12 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
         onClose={() => !leaving && setConfirmLeave(false)}
         title={`${leaveLabel}?`}
         description={
-          session ? (
+          session && game?.resultStyle === 'points' ? (
+            <>
+              Se estiveres a meio de um jogo, passas daqui em diante e ficas com o pior lugar ainda livre. Os
+              teus pontos contam para o resultado da sessão, e podes voltar à mesa enquanto houver lugar.
+            </>
+          ) : session ? (
             <>
               Se tiveres cartas na mesa, as tuas mãos ficam e são pagas normalmente. O teu saldo conta para o
               resultado da sessão, e podes voltar à mesa enquanto houver lugar.
@@ -190,7 +195,11 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
         open={confirmEnd}
         onClose={() => !ending && setConfirmEnd(false)}
         title="Terminar a sessão?"
-        description="A ronda em curso acaba normalmente; depois a mesa fecha e cada um fica com o seu saldo."
+        description={
+          game?.resultStyle === 'points'
+            ? 'A mesa fecha já: o jogo em curso não conta, e a classificação fica com os pontos dos jogos terminados.'
+            : 'A ronda em curso acaba normalmente; depois a mesa fecha e cada um fica com o seu saldo.'
+        }
       >
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="secondary" onClick={() => setConfirmEnd(false)} disabled={ending}>
@@ -249,6 +258,22 @@ function ResultsModal({ result, style, game, selfId, leaving, onClose, onLeave }
     description = result?.aborted
       ? 'Ninguém chegou a jogar uma ronda.'
       : 'Saldo de cada um, com as recompras descontadas. Fichas virtuais, sem valor real.';
+  } else if (style === 'points') {
+    const winners = standings.filter((s) => s.outcome === 'WINNER').length;
+    title = result?.aborted
+      ? 'Sessão terminada'
+      : !mine
+        ? 'Sessão terminada'
+        : mine.outcome === 'WINNER'
+          ? winners > 1
+            ? 'Empate no topo — ganhaste! 🎉'
+            : 'Ganhaste a sessão! 🎉'
+          : mine.outcome === 'LOSER'
+            ? 'Ficaste em último…'
+            : `Terminaste em ${mine.position ?? '?'}.º`;
+    description = result?.aborted
+      ? 'Nenhum jogo chegou ao fim.'
+      : 'Pontos por jogo: Presidente +2 · Vice-Presidente +1 · Neutro 0 · Vice-olho −1 · Olho −2.';
   } else if (result?.aborted) title = 'Partida interrompida';
   else if (style === 'survival') title = mine?.outcome === 'LOSER' ? 'Perdeste…' : 'Sobreviveste! 🎉';
   else if (mine?.outcome === 'LOSER') title = 'Ficaste em último…';
@@ -271,6 +296,33 @@ function ResultsModal({ result, style, game, selfId, leaving, onClose, onLeave }
       title={title}
       description={description ?? (result?.aborted ? 'Todos os jogadores restantes saíram.' : nextStarter)}
     >
+      {result && !result.aborted && style === 'points' && (
+        <ol className="flex flex-col gap-2">
+          {standings.map((s) => {
+            const score = s.score ?? 0;
+            return (
+              <li
+                key={s.playerId}
+                className={`flex items-center gap-3 rounded-xl px-4 py-2.5 ${s.playerId === selfId ? 'bg-gold/15' : 'bg-surface-2'}`}
+              >
+                <span className="w-6 text-lg" aria-hidden="true">
+                  {s.outcome === 'WINNER' ? '👑' : s.outcome === 'LOSER' ? '👁️' : ''}
+                </span>
+                <span className="w-8 tabular-nums text-subtle">{s.position}.º</span>
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {s.username}
+                  {s.playerId === selfId && <span className="text-subtle"> (tu)</span>}
+                </span>
+                <span
+                  className={`font-semibold tabular-nums ${score > 0 ? 'text-success' : score < 0 ? 'text-danger' : 'text-muted'}`}
+                >
+                  {signedPoints(score)}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
       {result && !result.aborted && style === 'chips' && (
         <ol className="flex flex-col gap-2">
           {standings.map((s) => {

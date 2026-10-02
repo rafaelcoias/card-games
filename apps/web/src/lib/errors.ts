@@ -73,6 +73,23 @@ const MESSAGES: Record<string, string> = {
   DOUBT_CLOSED: 'Tarde demais: essa jogada já não pode ser posta em causa.',
   CANNOT_DOUBT_SELF: 'Não podes desconfiar da tua própria jogada.',
   NOT_PLAYING: 'Já ficaste sem cartas.',
+  NEXT_GAME: 'Ainda não estás neste jogo: entras no próximo.',
+  // Olho engine
+  JOKER_ALONE: 'O joker joga-se sozinho.',
+  POWER_FIRST_TRICK: 'Na primeira vaza não se joga 2 nem joker.',
+  CANNOT_FINISH_WITH_POWER: 'Nesta mesa não se pode acabar com um 2 ou um joker.',
+  NOT_ENOUGH_TWOS: 'Não chegam os 2: para bater uma tripla são precisos pelo menos dois.',
+  WRONG_COUNT: 'Joga tantas cartas como a vaza (ou bate com 2s ou com o joker).',
+  TOO_LOW: 'Tens de jogar igual ou mais alto.',
+  MUST_OPEN: 'Abres tu a vaza: joga alguma coisa.',
+  ESCAPE_OR_SKIP: 'Joga a mesma carta para escapar, ou perde a vez.',
+  NO_SKIP: 'Ninguém te vai saltar.',
+  CANNOT_ESCAPE: 'Não tens com que escapar ao salto.',
+  ESCAPE_SAME_CARD: 'Só escapas com a mesma carta, tantas como as jogadas.',
+  NO_EXCHANGE: 'Não tens cartas para devolver.',
+  RETURN_COUNT: 'Devolve o número certo de cartas.',
+  ALREADY_SEATED: 'Já tens lugar nesta mesa.',
+  NOT_ENOUGH_PLAYERS: 'À espera de mais jogadores.',
 };
 
 export function describeError(error: ErrorPayload): string {

@@ -52,7 +52,8 @@ export function MatchHistory({ matches, failed = false, emptyText }: MatchHistor
         <ul className="mt-4 divide-y divide-line">
           {matches.map((match) => {
             const badge = resultBadge(match);
-            const chips = findGameClient(match.gameId)?.resultStyle === 'chips';
+            const style = findGameClient(match.gameId)?.resultStyle;
+            const chips = style === 'chips' || style === 'points';
             return (
               <li key={match.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
                 <span

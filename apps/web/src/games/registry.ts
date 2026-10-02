@@ -5,12 +5,14 @@ import type { ConfigValue } from '@cardroom/game-core';
 // High Card is retired: Peixinho took its place. Uncomment (here and in the server registry) to bring it back.
 // import { highCard } from '@cardroom/high-card';
 import { mexicana } from '@cardroom/mexicana';
+import { olho } from '@cardroom/olho';
 import { peixinho } from '@cardroom/peixinho';
 import { BlackjackTable } from './blackjack/table';
 import { DesconfiaTable } from './desconfia/table';
 import { FodinhaTable } from './fodinha/table';
 // import { HighCardTable } from './high-card/table';
 import { MexicanaTable } from './mexicana/table';
+import { OlhoTable } from './olho/table';
 import { PeixinhoTable } from './peixinho/table';
 import type { GameClientDefinition, GameRules } from './types';
 
@@ -79,6 +81,14 @@ export const GAME_CLIENTS: GameClientDefinition[] = [
     scoreUnit: ['carta', 'cartas'],
     resultNote: 'Começa a próxima partida quem receber o 3 de paus.',
     Table: DesconfiaTable,
+  }),
+  define(olho, {
+    tagline:
+      'Livra-te das cartas primeiro e ganha um cargo: no jogo seguinte o Olho tem de dar as melhores ao Presidente. Mesa contínua; entra e sai quando quiseres.',
+    defaultMaxPlayers: 5,
+    resultStyle: 'points',
+    resultDelayMs: 600,
+    Table: OlhoTable,
   }),
   // define(highCard, {
   //   tagline: 'Um aquecimento rápido: a carta mais alta ganha a ronda.',
