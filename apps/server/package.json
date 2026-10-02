@@ -19,6 +19,7 @@
     "@cardroom/desconfia": "workspace:*",
     "@cardroom/fodinha": "workspace:*",
     "@cardroom/game-core": "workspace:*",
+    "@cardroom/gringo": "workspace:*",
     "@cardroom/high-card": "workspace:*",
     "@cardroom/mexicana": "workspace:*",
     "@cardroom/olho": "workspace:*",

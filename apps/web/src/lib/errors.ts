@@ -90,6 +90,20 @@ const MESSAGES: Record<string, string> = {
   RETURN_COUNT: 'Devolve o número certo de cartas.',
   ALREADY_SEATED: 'Já tens lugar nesta mesa.',
   NOT_ENOUGH_PLAYERS: 'À espera de mais jogadores.',
+  // Gringo engine
+  ALREADY_DONE: 'Já memorizaste as tuas cartas.',
+  GRINGO_DISABLED: 'Nesta mesa não se diz Gringo.',
+  GRINGO_ALREADY_CALLED: 'Já alguém disse Gringo.',
+  GRINGO_TOO_SOON: 'Ainda não: todos têm de jogar mais vezes antes de alguém dizer Gringo.',
+  NO_CARDS_LEFT: 'Não tens cartas: só podes dizer Gringo ou passar.',
+  DECK_EMPTY: 'O baralho acabou.',
+  EMPTY_SLOT: 'Já não há carta nessa posição.',
+  NO_POWER: 'Essa carta não tem poder.',
+  NO_TARGET: 'Ninguém mais tem cartas para esse poder.',
+  WRONG_TARGET: 'Essa carta não serve para este poder.',
+  SNAP_CLOSED: 'Tarde demais: já não se pode bater nessa carta.',
+  SNAP_TAKEN: 'Alguém bateu primeiro.',
+  STALE_WINDOW: 'Essa janela já fechou.',
 };
 
 export function describeError(error: ErrorPayload): string {

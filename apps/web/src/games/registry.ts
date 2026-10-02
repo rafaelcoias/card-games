@@ -2,6 +2,7 @@ import { blackjack } from '@cardroom/blackjack';
 import { desconfia } from '@cardroom/desconfia';
 import { fodinha } from '@cardroom/fodinha';
 import type { ConfigValue } from '@cardroom/game-core';
+import { gringo } from '@cardroom/gringo';
 // High Card is retired: Peixinho took its place. Uncomment (here and in the server registry) to bring it back.
 // import { highCard } from '@cardroom/high-card';
 import { mexicana } from '@cardroom/mexicana';
@@ -10,6 +11,7 @@ import { peixinho } from '@cardroom/peixinho';
 import { BlackjackTable } from './blackjack/table';
 import { DesconfiaTable } from './desconfia/table';
 import { FodinhaTable } from './fodinha/table';
+import { GringoTable } from './gringo/table';
 // import { HighCardTable } from './high-card/table';
 import { MexicanaTable } from './mexicana/table';
 import { OlhoTable } from './olho/table';
@@ -89,6 +91,17 @@ export const GAME_CLIENTS: GameClientDefinition[] = [
     resultStyle: 'points',
     resultDelayMs: 600,
     Table: OlhoTable,
+  }),
+  define(gringo, {
+    tagline:
+      'Quatro cartas viradas para baixo e só conheces duas: troca, espreita e bate cartas iguais. Ganha quem acabar com menos pontos.',
+    defaultMaxPlayers: 4,
+    resultStyle: 'placement',
+    // The grids turn over one player after the other, then the totals count up.
+    resultDelayMs: 3600,
+    scoreUnit: ['ponto', 'pontos'],
+    resultNote: 'Ganha quem tiver menos pontos; os empates partilham o lugar.',
+    Table: GringoTable,
   }),
   // define(highCard, {
   //   tagline: 'Um aquecimento rápido: a carta mais alta ganha a ronda.',

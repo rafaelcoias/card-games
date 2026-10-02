@@ -5,8 +5,10 @@ com um servidor autoritativo. Os jogos são a **Mexicana**, a **Fodinha** (apost
 **Blackjack** (até 7 contra a banca, com fichas virtuais sem valor real; especificação em `blackjack-kit/`), o
 **Peixinho** (o *Go Fish* português: pedir cartas, ir à pesca e juntar peixinhos; especificação em `peixinho-kit/`), o
 **Desconfia** (o jogo da mentira: pousar cartas viradas para baixo, anunciar o valor e desconfiar dos outros;
-especificação em `desconfia-kit/`) e o **Olho** (o *Presidente* português: livrar-se das cartas primeiro, ganhar um
-cargo e trocar cartas no jogo seguinte, numa mesa contínua; especificação em `olho-kit/`).
+especificação em `desconfia-kit/`), o **Olho** (o *Presidente* português: livrar-se das cartas primeiro, ganhar um
+cargo e trocar cartas no jogo seguinte, numa mesa contínua; especificação em `olho-kit/`) e o **Gringo** (memória e
+pontos baixos: quatro cartas viradas para baixo em posições fixas, só se conhecem duas; trocar, espreitar e bater
+cartas iguais; especificação em `gringo-kit/`).
 O jogo trivial "Carta Mais Alta" (`packages/games/high-card`) está desativado: o registo está comentado no servidor e
 no cliente.
 
@@ -37,6 +39,7 @@ packages/
     peixinho/   Motor puro do Peixinho (sem I/O)
     desconfia/  Motor puro do Desconfia (sem I/O)
     olho/       Motor puro do Olho (sem I/O)
+    gringo/     Motor puro do Gringo (sem I/O)
     high-card/  Jogo trivial (desativado)
   ui/         Baralho SVG (sprite + gerador) e componentes animados (Card, CardFan, …)
 firebase.json, firestore.rules, firestore.indexes.json   Configuração Firebase + emuladores
@@ -141,10 +144,10 @@ persistem em `.firebase-data/`.
 | `pnpm dev` | Tudo em modo desenvolvimento (Turborepo) |
 | `pnpm build` | Build de produção de todos os workspaces |
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Qualidade (ESLint com tipos, TS strict, Prettier) |
-| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana, do Peixinho, do Desconfia e do Olho e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
+| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana, do Peixinho, do Desconfia, do Olho e do Gringo e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
 | `pnpm --filter @cardroom/server test:int` | Repositórios Firestore contra o emulador |
-| `pnpm --filter @cardroom/server test:e2e` | Clientes Socket.IO jogam partidas completas (com reconexão) e sessões de Blackjack e de Olho onde se entra e sai a meio (`E2E_SERVER_URLS=url1,url2` reparte por 2 instâncias) |
-| `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe, partidas completas (incluindo o Peixinho a 3 e o Desconfia a 4, com um recarregar a meio) e sessões de Blackjack e de Olho pela UI |
+| `pnpm --filter @cardroom/server test:e2e` | Clientes Socket.IO jogam partidas completas (com reconexão; no Desconfia e no Gringo, com desconfianças/batidas simultâneas de que só uma conta) e sessões de Blackjack e de Olho onde se entra e sai a meio (`E2E_SERVER_URLS=url1,url2` reparte por 2 instâncias) |
+| `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe, partidas completas (incluindo o Peixinho a 3, e o Desconfia e o Gringo a 4, com um recarregar a meio) e sessões de Blackjack e de Olho pela UI |
 | `pnpm emulators` | Emuladores Firebase (Auth + Firestore) |
 | `pnpm firebase:deploy-rules` | Publica `firestore.rules` e os índices no projeto Firebase |
 | `pnpm cards:generate` | Regenera o baralho SVG |
@@ -155,9 +158,10 @@ cegas, apostas, empate, resumo, fim, 10 jogadores) estão em **`/dev/fodinha`**,
 peek, banca, liquidação, baralhar, mesa cheia, recompra, entrar a meio) em **`/dev/blackjack`**, e os do Peixinho (pedir,
 "Tenho!", "Vai à pesca!", pescou o pedido, peixinho, reposição, fora de jogo, fim, 6 jogadores, sem memória) em
 **`/dev/peixinho`**, os do Desconfia (pilha nova, pilha em curso, à espera, desconfiar, mentira, verdade, peixinho,
-última carta, fim, 8 jogadores) em **`/dev/desconfia`**, e os do Olho (abrir, seguir com par, salto com escape, saltado,
+última carta, fim, 8 jogadores) em **`/dev/desconfia`**, os do Olho (abrir, seguir com par, salto com escape, saltado,
 quatro iguais, joker, ninguém bateu, troca do Presidente, troca do Olho, resumo, bloqueado, 8 jogadores) em
-**`/dev/olho`**.
+**`/dev/olho`**, e os do Gringo (espreitar inicial, a tua vez, carta tirada, carta com poder, cada poder, espreitam-te,
+janela de bater, bateu, errou, troca às cegas, Gringo, revelação final, 10 jogadores) em **`/dev/gringo`**.
 
 ## Decisões e notas
 
@@ -296,5 +300,33 @@ quatro iguais, joker, ninguém bateu, troca do Presidente, troca do Olho, resumo
   - **Simulação.** 10 000 jogos de 3 a 8 bots ao calhas, com as opções da sala sorteadas e, em parte das sessões,
     jogadores a entrar e a sair a meio, verificam em cada passo a conservação das 54 cartas, que quem tem a vez pode
     jogar e que não há 2 nem joker na primeira vaza; acabam todos com os cargos atribuídos (média ~120 ações).
+- **Gringo.** Regras do `gringo-kit/02` com as propostas do `09` aceites, sem nenhuma alteração ao núcleo: 54 cartas
+  (108 com 2 baralhos; `AUTO` usa 2 a partir de 7 jogadores), 2 a 10 jogadores, Valete 11 · Dama 12 · Rei preto 13 ·
+  Rei vermelho −3 (ou −1) · joker 0. Opções da sala: Gringo (desligado por omissão: acaba com o baralho) e a partir de
+  quantas voltas, conjunto de poderes (10–Rei ou 7–10), Rei vermelho, janela de bater, baralhos, tempo por jogada.
+  - **Posições fixas.** Cada carta vive num `Slot { index, card }` cujo índice nunca muda nem se reutiliza; uma batida
+    certa deixa a posição vazia, uma penalização acrescenta o índice seguinte (colunas novas à direita).
+  - **Informação escondida.** Uma carta virada para baixo viaja só como "há aqui uma carta" — nem o `uid` vai na vista,
+    porque o nomearia. A face só aparece a quem pode vê-la naquele momento: o próprio, nas posições [3] e [4], durante o
+    espreitar inicial (até carregar em "Memorizei"); quem espreita com um poder, durante esse passo; todos, numa
+    batida falhada e no fim. A mesa distingue as cartas viradas com fichas próprias (`token`), que as acompanham em
+    trocas, descartes e batidas, e é isso que as faz deslizar de posição para posição.
+  - **Ordem de um descarte com poder:** a carta vai para o descarte, o poder usa-se (`POWER`), e só depois abre a janela
+    de bater sobre essa carta — ninguém bate enquanto há cartas a mudar de sítio. O "espreitar" fica 3 s visível
+    (`SYS_PEEK_END`); o Rei espera a decisão de trocar ou não.
+  - **Bater.** Cada batida nomeia o seu `discardId`; a fila única da sala ordena as batidas simultâneas e só a primeira
+    conta. Depois dela a janela fica fechada e o resultado fica na mesa 1,1 s (certa) ou 2,3 s (errada: a carta é
+    mostrada 1,5 s e entra a de penalização). Como no Olho, o próximo passo automático deriva do estado
+    (`scheduleFor`), por isso nunca se perde quando uma ação chega antes. Na UI bate-se com dois toques na carta.
+  - **Tempos:** espreitar inicial 10 s (acaba antes se todos memorizarem), tirar 30 s e decidir 30 s (ao fim: tira e
+    descarta, sem poder), poder 15 s (ao fim: ignorado; o Rei não troca).
+  - **Casos que o kit não cobre**, decididos e testados: a carta tirada só pode trocar com uma posição que tenha carta;
+    um poder que mexe na grelha de outro só existe se alguém mais tiver cartas; quem chama Gringo sem cartas não joga
+    mais nada nessa vez; quem fica sem cartas durante a última volta já não precisa de a jogar.
+  - **Quem começa** é sorteado em cada partida: o resultado guardado pela plataforma não diz quem começou a anterior,
+    e rodar exigiria mudar o núcleo.
+  - **Simulação.** 10 000 partidas de 2 a 10 bots (com memória perfeita ou ao calhas, batidas com probabilidades
+    diferentes e opções da sala sorteadas) verificam em cada passo a conservação das cartas, que os índices das
+    grelhas só crescem e nunca mudam, e que há no máximo uma batida por descarte; acabam todas (média ~105–140 ações).
 #   c a r d - g a m e s  
  
