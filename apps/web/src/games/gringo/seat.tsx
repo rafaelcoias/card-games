@@ -33,6 +33,8 @@ export interface SeatProps {
   /** During the initial peek: their bottom row lifts a little, without showing its faces (UI §3). */
   peeking: boolean;
   watched: number | null;
+  /** Slots whose card just changed (a swap): outlined until the next turn. */
+  moved: ReadonlySet<number>;
   stamp: Stamp | null;
   final: { total: number; winner: boolean } | null;
   redKingValue: -3 | -1 | null;
@@ -55,6 +57,7 @@ export const Seat = memo(function Seat({
   lastTurn,
   peeking,
   watched,
+  moved,
   stamp,
   final,
   redKingValue,
@@ -119,6 +122,7 @@ export const Seat = memo(function Seat({
           onSelect={onSelect}
           raised={peeking && !seat.peekDone ? BOTTOM_ROW : undefined}
           watched={watched}
+          moved={moved}
           redKingValue={redKingValue}
           flash={stamp}
         />

@@ -44,6 +44,7 @@ test('three browsers play Peixinho to the 13th peixinho; a reload mid-match lose
   await host.getByRole('button', { name: 'Criar sala' }).first().click();
   const dialog = host.getByRole('dialog');
   await dialog.getByText('Peixinho', { exact: true }).click();
+  await dialog.getByRole('button', { name: 'Personalizar' }).click();
   await dialog.getByText('3', { exact: true }).click();
   await dialog.getByText('Todos os pedidos', { exact: true }).click();
   await dialog.getByRole('button', { name: 'Criar sala' }).click();

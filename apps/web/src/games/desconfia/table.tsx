@@ -21,7 +21,7 @@ import { desconfiaSizes, type SeatVariant, type Sizes } from './layout';
 import { Center, RemovedStrip } from './pile';
 import { applyEvent, dealDurationMs, sceneFromView, type Fx, type Scene } from './scene';
 import { Seat, type Bubble } from './seat';
-import { ActionBar, ClaimPicker, DoubtButton, Hand, truthfulRank } from './self-area';
+import { ActionBar, DoubtButton, Hand, PlayComposer, truthfulRank } from './self-area';
 
 const SEAT_BOX: Record<SeatVariant, Box> = {
   regular: { width: 170, height: 72 },
@@ -287,6 +287,12 @@ export function DesconfiaTableView({
   );
   const onClaim = (rank: StandardRank) =>
     setSelection((s) => ({ ...(s.key === turnKey ? s : { key: turnKey, cards: NO_CARDS }), claim: rank }));
+  const onPick = (cardIds: string[]) =>
+    setSelection((s) => ({
+      key: turnKey,
+      cards: new Set(cardIds),
+      claim: s.key === turnKey ? s.claim : null,
+    }));
 
   const send = async (action: DesconfiaAction) => {
     if (!canAct) return;
@@ -386,8 +392,16 @@ export function DesconfiaTableView({
           selected={selected}
           onToggle={onToggle}
         />
-        {myTurn && scene.claimRank === null && scene.hand.length > 0 && (
-          <ClaimPicker value={claim} truthful={suggested} onChange={onClaim} />
+        {myTurn && scene.hand.length > 0 && (
+          <PlayComposer
+            hand={scene.hand}
+            selected={selected}
+            fixed={scene.claimRank}
+            claim={claim}
+            truthful={suggested}
+            onClaim={onClaim}
+            onPick={onPick}
+          />
         )}
         <ActionBar
           scene={scene}

@@ -6,6 +6,8 @@ import {
   type ClientToServerEvents,
   type ErrorPayload,
   type JoinedRoom,
+  type RoomCloseReason,
+  type RoomConfigurePayload,
   type RoomCreatePayload,
   type ServerToClientEvents,
   type VoiceConfig,
@@ -27,9 +29,16 @@ type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 const ACK_TIMEOUT_MS = 8_000;
 
+export const CLOSED_MESSAGE: Record<RoomCloseReason, string> = {
+  HOST_LEFT: 'O anfitrião saiu: a sala foi fechada.',
+  EXPIRED: 'A sala fechou: as salas duram no máximo 12 horas.',
+};
+
 /** Function-typed properties (not methods) so they can be destructured safely. */
 export interface RoomCommands {
   createRoom: (payload: RoomCreatePayload) => Promise<Ack<JoinedRoom>>;
+  /** Host, between matches: another game or other rules for the same players. */
+  configureRoom: (payload: RoomConfigurePayload) => Promise<Ack>;
   joinRoom: (code: string) => Promise<Ack<JoinedRoom>>;
   leaveRoom: () => Promise<Ack>;
   setReady: (ready: boolean) => Promise<Ack>;
@@ -110,6 +119,19 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       toast.error('Foste removido da sala pelo anfitrião');
       router.replace('/lobby');
     });
+    socket.on('room:closed', ({ roomId, reason }) => {
+      const { room, result } = store();
+      if (room?.id !== roomId) return;
+      // Results on screen stay until dismissed; leaving them then goes to the lobby.
+      if (result) {
+        store().setClosed(reason);
+        return;
+      }
+      store().leaveRoom();
+      gameFeed.reset();
+      toast.error(CLOSED_MESSAGE[reason]);
+      router.replace('/lobby');
+    });
     socket.on('game:events', (message) => gameFeed.pushEvents(message));
     socket.on('game:view', (message) => gameFeed.pushView(message));
     socket.on('game:finished', (result) => store().setResult(result));
@@ -128,6 +150,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     const timed = () => socket.timeout(ACK_TIMEOUT_MS);
     return {
       createRoom: (payload) => call(() => timed().emitWithAck('room:create', payload)),
+      configureRoom: (payload) => call(() => timed().emitWithAck('room:configure', payload)),
       joinRoom: (code) => call(() => timed().emitWithAck('room:join', { code })),
       leaveRoom: () => call(() => timed().emitWithAck('room:leave')),
       setReady: (ready) => call(() => timed().emitWithAck('room:ready', { ready })),

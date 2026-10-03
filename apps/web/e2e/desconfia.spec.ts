@@ -99,6 +99,7 @@ test('four browsers play Desconfia to the end; a reload while a play is open to 
   await host.getByRole('button', { name: 'Criar sala' }).first().click();
   const dialog = host.getByRole('dialog');
   await dialog.getByText('Desconfia', { exact: true }).click();
+  await dialog.getByRole('button', { name: 'Personalizar' }).click();
   await dialog.getByText('4', { exact: true }).first().click();
   await dialog.getByText('1s', { exact: true }).first().click();
   await dialog.getByRole('button', { name: 'Criar sala' }).click();

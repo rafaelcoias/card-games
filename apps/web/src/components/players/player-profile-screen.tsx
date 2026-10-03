@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useProfile } from '@/components/app/profile-context';
 import { Avatar } from '@/components/ui/avatar';
 import { Spinner } from '@/components/ui/spinner';
+import { ChipsBadge } from './chips-badge';
 import { MatchHistory } from './match-history';
 import { OnlineDot, presenceLabel } from './presence';
 import { StatsSummary } from './stats-summary';
@@ -38,7 +39,7 @@ export function PlayerProfileScreen({ username }: { username: string }) {
   const { player } = state;
   const isMe = player.id === me.id;
   return (
-    <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[320px_1fr]">
+    <div className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)] gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[320px_minmax(0,1fr)]">
       <section className="panel h-fit p-6" aria-labelledby="player-heading">
         <div className="relative w-fit">
           <Avatar name={player.username} src={player.avatarUrl} size={72} />
@@ -57,6 +58,9 @@ export function PlayerProfileScreen({ username }: { username: string }) {
         <p className="mt-1 text-sm text-muted">
           Membro desde {memberSince.format(new Date(player.createdAt))}
         </p>
+        <div className="mt-3">
+          <ChipsBadge chips={player.chips} />
+        </div>
         <p className="mt-3 text-sm font-medium" role="status">
           {player.presence ? (
             <span className="text-success">Online · {presenceLabel(player.presence)}</span>

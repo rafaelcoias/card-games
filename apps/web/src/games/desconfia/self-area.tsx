@@ -15,12 +15,12 @@ import {
 } from '@cardroom/ui';
 import clsx from 'clsx';
 import { motion, useReducedMotion } from 'motion/react';
-import { memo, useEffect, useMemo, type KeyboardEvent } from 'react';
+import { memo, useEffect, useMemo, type KeyboardEvent, type ReactNode } from 'react';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { TurnRing, useSecondsLeft, type TimerLike } from '../shared/turn-ring';
 import { useElementWidth } from '../shared/use-element-width';
-import { plural, rankPlural } from './copy';
+import { claimLine, plural, rankPlural } from './copy';
 import { ANCHORS, dealStaggerSeconds, type Scene, type SceneCard } from './scene';
 import { SpeechBubble, type Bubble } from './seat';
 
@@ -135,6 +135,159 @@ export function ClaimPicker({
         </button>
       ))}
     </div>
+  );
+}
+
+export interface PlayComposerProps {
+  hand: readonly SceneCard[];
+  selected: ReadonlySet<string>;
+  /** The pile's rank, which every play must announce; `null` on a new pile (the player names it). */
+  fixed: StandardRank | null;
+  claim: StandardRank | null;
+  /** The rank the selected cards truly are, when they agree. */
+  truthful: StandardRank | null;
+  onClaim: (rank: StandardRank) => void;
+  /** Selects exactly these cards (the shortcut to one's own cards of the claimed rank). */
+  onPick: (cardIds: string[]) => void;
+}
+
+/**
+ * A play, one step at a time (UI §3): ① the cards to lay face down, ② what
+ * they are said to be — true or not — and ③ play. The announcement reads as
+ * it will be heard ("Dois Setes"), and says whether it is the truth or a bluff.
+ */
+export function PlayComposer({ hand, selected, fixed, claim, truthful, onClaim, onPick }: PlayComposerProps) {
+  const reduced = useReducedMotion() ?? false;
+  const count = selected.size;
+  const chosen = hand.filter((c) => selected.has(c.card.id));
+  const honest = claim !== null && chosen.every((c) => c.card.rank === claim || c.card.rank === JOKER);
+  const ofClaim = claim ? hand.filter((c) => c.card.rank === claim).map((c) => c.card.id) : [];
+  const pickedThem = ofClaim.length === count && ofClaim.every((id) => selected.has(id));
+  const step = count === 0 ? 1 : claim === null ? 2 : 3;
+
+  return (
+    <div
+      className="flex w-full max-w-3xl flex-col gap-2 rounded-2xl bg-black/35 p-2.5 backdrop-blur-sm"
+      role="group"
+      aria-label="A tua jogada"
+    >
+      <ol className="flex flex-wrap items-center gap-1.5 text-xs font-semibold">
+        <ComposerStep n={1} state={step === 1 ? 'active' : 'done'}>
+          {count === 0 ? 'Escolhe as cartas' : plural(count, 'carta', 'cartas')}
+        </ComposerStep>
+        <StepArrow />
+        <ComposerStep n={2} state={step === 2 ? 'active' : step > 2 ? 'done' : 'todo'}>
+          {fixed
+            ? `Dizer ${rankPlural(fixed)}`
+            : claim
+              ? `Dizer ${rankPlural(claim)}`
+              : 'O que dizes que são?'}
+        </ComposerStep>
+        <StepArrow />
+        <ComposerStep n={3} state={step === 3 ? 'active' : 'todo'}>
+          Jogar
+        </ComposerStep>
+      </ol>
+
+      {fixed === null && <ClaimPicker value={claim} truthful={truthful} onChange={onClaim} />}
+
+      <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+        <motion.p
+          key={count === 0 ? 'cards' : claim === null ? 'claim' : `say:${count}:${claim}`}
+          className="min-w-0 flex-1"
+          initial={reduced ? false : { opacity: 0, y: 3 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.15 }}
+          aria-live="polite"
+        >
+          {count === 0 ? (
+            <span className="text-ivory/70">
+              Toca nas cartas que vais pousar, viradas para baixo — uma ou várias.
+              {fixed && ` Tens de dizer que são ${rankPlural(fixed)}, sejam ou não.`}
+            </span>
+          ) : claim === null ? (
+            <span className="text-ivory/70">
+              Escolhe o valor que anuncias: pode ser a verdade (o ponto verde) ou não.
+            </span>
+          ) : (
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <span>
+                Vais dizer <strong className="text-gold">«{claimLine(count, claim)}»</strong>
+              </span>
+              <span
+                className={clsx(
+                  'rounded-full px-2 py-0.5 text-xs font-bold',
+                  honest ? 'bg-success/20 text-success' : 'bg-gold/20 text-gold',
+                )}
+              >
+                {honest ? '✓ É verdade' : '🤥 É bluff'}
+              </span>
+            </span>
+          )}
+        </motion.p>
+        {ofClaim.length > 0 && !pickedThem && claim && (
+          <button
+            type="button"
+            onClick={() => onPick(ofClaim)}
+            className="rounded-lg bg-white/10 px-2.5 py-1 text-xs font-semibold text-ivory transition-colors hover:bg-white/20"
+          >
+            {pickMine(ofClaim.length, claim)}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** "Escolher o meu Rei", "Escolher as minhas 2 Damas" (the queen is the only feminine rank). */
+function pickMine(count: number, rank: StandardRank): string {
+  const feminine = rank === 'Q';
+  if (count === 1) return `Escolher ${feminine ? 'a minha' : 'o meu'} ${rankLabel(rank)}`;
+  return `Escolher ${feminine ? 'as minhas' : 'os meus'} ${count} ${rankPlural(rank)}`;
+}
+
+function ComposerStep({
+  n,
+  state,
+  children,
+}: {
+  n: number;
+  state: 'todo' | 'active' | 'done';
+  children: ReactNode;
+}) {
+  return (
+    <li
+      aria-current={state === 'active' ? 'step' : undefined}
+      className={clsx(
+        'inline-flex items-center gap-1.5 rounded-full py-0.5 pl-0.5 pr-2.5 transition-colors',
+        state === 'active' && 'bg-gold text-gold-ink',
+        state === 'done' && 'bg-white/10 text-ivory',
+        state === 'todo' && 'text-ivory/45',
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={clsx(
+          'flex size-5 items-center justify-center rounded-full text-[11px] font-black',
+          state === 'active'
+            ? 'bg-gold-ink/15'
+            : state === 'done'
+              ? 'bg-success/25 text-success'
+              : 'bg-white/10',
+        )}
+      >
+        {state === 'done' ? '✓' : n}
+      </span>
+      {children}
+    </li>
+  );
+}
+
+function StepArrow() {
+  return (
+    <li aria-hidden="true" className="text-ivory/30">
+      ›
+    </li>
   );
 }
 

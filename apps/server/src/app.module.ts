@@ -29,6 +29,7 @@ import { MatchesRepository, ProfilesRepository, RoomsRepository } from './persis
 import { GameGateway } from './realtime/game.gateway';
 import { RealtimeEmitter } from './realtime/realtime.emitter';
 import { RedisModule } from './redis/redis.module';
+import { RoomCloser } from './rooms/room-closer';
 import { RoomStore } from './rooms/room.store';
 import { RoomsService } from './rooms/rooms.service';
 import { TimerScheduler } from './scheduler/timer.scheduler';
@@ -85,6 +86,7 @@ export function createAppModule(env: Env = loadEnv()) {
       RoomsRepository,
       MatchesRepository,
       RoomStore,
+      RoomCloser,
       TimerScheduler,
       RealtimeEmitter,
       RoomPublisher,

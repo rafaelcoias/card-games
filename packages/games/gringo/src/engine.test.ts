@@ -188,7 +188,7 @@ describe('powers (07 §3)', () => {
     t.draw('ana');
     t.discard('ana', true);
     expect(t.module.getPendingPlayers(t.state)).toEqual(['ana']);
-    expect(t.module.getTimeoutMs(t.state)).toBe(15_000);
+    expect(t.module.getTimeoutMs(t.state)).toBe(20_000);
     expectError(t.try({ type: 'POWER_PEEK', owner: 'ana', index: 0 }, 'ana'), 'WRONG_TARGET');
     expectError(t.try({ type: 'POWER_PEEK', owner: 'zoe', index: 0 }, 'ana'), 'UNKNOWN_TARGET');
     expectError(
@@ -209,10 +209,11 @@ describe('powers (07 §3)', () => {
       });
       expect(JSON.stringify(view)).not.toContain('JK1');
     }
-    // While the card is shown, nobody owes anything: the engine ends it.
+    // While the card is shown, nobody owes anything: the engine ends it (the player may, earlier).
     expect(t.module.getPendingPlayers(t.state)).toEqual([]);
     expect(t.module.getTimeoutMs(t.state)).toBeNull();
-    expect(t.module.getValidActions(t.state, 'ana')).toEqual([]);
+    expect(t.module.getValidActions(t.state, 'ana')).toEqual([{ type: 'POWER_PEEK_DONE' }]);
+    expect(t.module.getValidActions(t.state, 'bruno')).toEqual([]);
     expect(t.module.getDefaultAction(t.state, 'ana')).toBeNull();
     expectError(t.try({ type: 'SYS_TIMEOUT' }, SYSTEM_PLAYER_ID), 'WRONG_PHASE');
     t.tick();
@@ -235,6 +236,30 @@ describe('powers (07 §3)', () => {
     t.apply({ type: 'POWER_PEEK', owner: 'ana', index: 0 }, 'ana');
     expect(t.module.getPlayerView(t.state, 'ana').peek?.card.id).toBe('9C');
     expect(t.module.getPlayerView(t.state, 'carla').peek).toBeNull();
+    expectError(t.try({ type: 'POWER_PEEK_DONE' }, 'bruno'), 'NOT_YOUR_TURN');
+    const done = t.apply({ type: 'POWER_PEEK_DONE' }, 'ana');
+    expect(eventTypes(done.events)).toEqual(['PeekEnded', 'SnapWindowOpened']);
+    expect(t.module.getPlayerView(t.state, 'ana').peek).toBeNull();
+    expectError(t.try({ type: 'POWER_PEEK_DONE' }, 'ana'), 'NOT_YOUR_TURN');
+  });
+
+  it('gives the table time to follow a swap before the snap window counts', () => {
+    const t = table(['JH']);
+    t.draw('ana');
+    t.discard('ana', true);
+    expectError(t.try({ type: 'POWER_PEEK_DONE' }, 'ana'), 'WRONG_PHASE');
+    const swap = t.apply({ type: 'POWER_BLIND_SWAP', myIndex: 3, owner: 'bruno', theirIndex: 0 }, 'ana');
+    expect(swap.schedule).toEqual([
+      { action: { type: 'SYS_SNAP_WINDOW_CLOSED', discardId: 1 }, delayMs: PACE.swap + 3000 },
+    ]);
+
+    const kept = table(['KS']);
+    kept.draw('ana');
+    kept.discard('ana', true);
+    kept.apply({ type: 'POWER_PEEK', owner: 'carla', index: 1 }, 'ana');
+    expect(kept.module.getValidActions(kept.state, 'ana')).not.toContainEqual({ type: 'POWER_PEEK_DONE' });
+    const decided = kept.apply({ type: 'POWER_SWAP_DECISION', swap: false }, 'ana');
+    expect(decided.schedule?.[0]?.delayMs).toBe(3000);
   });
 
   it('a jack swaps two cards to each other’s exact slot, and nobody learns a value', () => {
@@ -277,7 +302,7 @@ describe('powers (07 §3)', () => {
     swapped.discard('ana', true);
     expectError(swapped.try({ type: 'POWER_SWAP_DECISION', swap: true, myIndex: 0 }, 'ana'), 'WRONG_PHASE');
     swapped.apply({ type: 'POWER_PEEK', owner: 'carla', index: 1 }, 'ana');
-    expect(swapped.module.getTimeoutMs(swapped.state)).toBe(15_000);
+    expect(swapped.module.getTimeoutMs(swapped.state)).toBe(20_000);
     expectError(swapped.try({ type: 'POWER_SWAP_DECISION', swap: true }, 'ana'), 'EMPTY_SLOT');
     expectError(swapped.try({ type: 'POWER_SKIP' }, 'ana'), 'WRONG_PHASE');
     const decided = swapped.apply({ type: 'POWER_SWAP_DECISION', swap: true, myIndex: 0 }, 'ana');
@@ -676,7 +701,7 @@ describe('schemas', () => {
       decks: 'AUTO',
       initialPeekMs: 10_000,
       turnTimeoutMs: 30_000,
-      powerTimeoutMs: 15_000,
+      powerTimeoutMs: 20_000,
     });
     expect(gringoConfigSchema.safeParse({ redKingValue: -2 }).success).toBe(false);
     expect(gringoConfigSchema.safeParse({ snapWindowMs: 10_000 }).success).toBe(false);

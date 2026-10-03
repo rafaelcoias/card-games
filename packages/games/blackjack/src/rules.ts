@@ -1,4 +1,4 @@
-import type { Card } from '@cardroom/game-core';
+import { WALLET, type Card } from '@cardroom/game-core';
 import type { BlackjackConfig, Chips, Hand, HandOutcome } from './types';
 
 export const MIN_PLAYERS = 1;
@@ -101,16 +101,14 @@ export function settleHand(
 export const insurancePayout = (amount: Chips, dealerBlackjack: boolean): Chips =>
   dealerBlackjack ? amount * 3 : 0;
 
-/** Rebuys are counted: net = chips now − everything bought in. */
-export const netChips = (
-  seat: { stack: Chips; rebuys: number },
-  config: Pick<BlackjackConfig, 'startingStack'>,
-) => seat.stack - config.startingStack * (1 + seat.rebuys);
+/** Rebuys are counted: net = chips now − what was brought to the table − every rebuy. */
+export const netChips = (seat: { stack: Chips; buyIn: Chips; rebuys: number }): Chips =>
+  seat.stack - seat.buyIn - WALLET.rebuy * seat.rebuys;
 
 /** Table-limit problems of a configuration, in Portuguese for the lobby; `null` when valid. */
 export function tableLimitsError(config: BlackjackConfig): string | null {
   if (config.minBet > config.maxBet) return 'A aposta mínima não pode ser maior do que a máxima';
-  if (config.maxBet > config.startingStack)
-    return 'A aposta máxima não pode ser maior do que as fichas iniciais';
+  if (config.minBet > WALLET.rebuy)
+    return `A aposta mínima não pode passar de uma recompra (${WALLET.rebuy})`;
   return null;
 }

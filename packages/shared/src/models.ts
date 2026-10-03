@@ -2,6 +2,12 @@ import type { DomainEvent, GameStanding, Lifecycle, Outcome } from '@cardroom/ga
 
 export type RoomStatus = 'OPEN' | 'PLAYING' | 'CLOSED';
 
+/**
+ * Why a room closed for everyone: its host is gone (left, or disconnected for
+ * good), or it reached its maximum age. A closed room, and its chat, are gone.
+ */
+export type RoomCloseReason = 'HOST_LEFT' | 'EXPIRED';
+
 export interface RoomPlayer {
   id: string;
   username: string;
@@ -129,6 +135,8 @@ export interface ProfileDto {
   guest: boolean;
   createdAt: string;
   stats: PlayerStats;
+  /** The account's chips for Blackjack (virtual, without value; everyone can see them). */
+  chips: number;
 }
 
 export interface MeResponse {
@@ -186,6 +194,8 @@ export interface PlayerSummary {
   username: string;
   avatarUrl: string | null;
   stats: PlayerStats;
+  /** The account's chips for Blackjack. */
+  chips: number;
   online: boolean;
 }
 

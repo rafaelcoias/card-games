@@ -1,5 +1,5 @@
 import type { Lifecycle } from '@cardroom/game-core';
-import type { ChatMessage, MatchResult, RoomStatus } from '@cardroom/shared';
+import type { ChatMessage, MatchResult, RoomCloseReason, RoomStatus } from '@cardroom/shared';
 
 export interface RoomMember {
   id: string;
@@ -43,6 +43,11 @@ export interface SessionRecord {
   timerTotalMs: number | null;
   /** Bumped whenever the deadline changes so stale timers can be ignored. */
   timerToken: number;
+  /**
+   * Games played with the account's chips: what each account holds as last
+   * written to its profile, so only what changed is written again.
+   */
+  wallets?: Record<string, number>;
 }
 
 /** Everything the server knows about a live room. Stored as one Redis value. */
@@ -62,6 +67,14 @@ export interface RoomRecord {
   chat: ChatMessage[];
   session: SessionRecord | null;
   lastResult: MatchResult | null;
+  /**
+   * The room closes as soon as the game in play ends (it reached its maximum
+   * age mid-game). Absent on rooms saved before rooms could close.
+   */
+  closing?: RoomCloseReason | null;
 }
 
 export const CHAT_HISTORY = 50;
+
+/** No room lives longer than this: its chat must not outlast the evening it was played in. */
+export const ROOM_MAX_AGE_MS = 12 * 60 * 60 * 1000;

@@ -8,6 +8,7 @@ import {
   type CardInstance,
   type PlayerId,
   type SetupOptions,
+  WALLET,
 } from '@cardroom/game-core';
 import { expect } from 'vitest';
 import { scheduleFor } from './engine';
@@ -73,9 +74,8 @@ export const eventTypes = (events: readonly BlackjackEvent[]) => events.map((e) 
  * plus what is on the felt plus what the house won equals everything bought in.
  */
 export function assertConservation(state: BlackjackState): void {
-  const { startingStack } = state.config;
   const people = [...state.seats, ...state.departed];
-  const boughtIn = people.reduce((sum, p) => sum + startingStack * (1 + p.rebuys), 0);
+  const boughtIn = people.reduce((sum, p) => sum + p.buyIn + WALLET.rebuy * p.rebuys, 0);
   const held = people.reduce((sum, p) => sum + p.stack, 0);
   const onFelt = state.seats.reduce((sum, seat) => sum + chipsInPlay(seat), 0);
   if (held + onFelt + state.houseNet !== boughtIn) {
@@ -97,6 +97,9 @@ export function assertCardsAccounted(state: BlackjackState): void {
   }
 }
 
+/** What every player brings to a test `Table` unless told otherwise (round numbers read well). */
+export const TEST_WALLET = 1000;
+
 /** Fluent driver over a module, for readable round-by-round scenarios. */
 export class Table {
   state: BlackjackState;
@@ -111,7 +114,8 @@ export class Table {
     options: SetupOptions = {},
     seed = 'table',
   ) {
-    this.state = module.setup(players, config(cfg), createSeededRng(seed), options);
+    const wallets = options.wallets ?? Object.fromEntries(players.map((id) => [id, TEST_WALLET]));
+    this.state = module.setup(players, config(cfg), createSeededRng(seed), { ...options, wallets });
   }
 
   /** A table whose first shoe deals `order` first. */

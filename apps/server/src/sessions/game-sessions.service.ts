@@ -12,9 +12,10 @@ import { ErrorCode, type MatchResult } from '@cardroom/shared';
 import { AppError } from '../common/app-error';
 import { ENV, type Env } from '../config/env';
 import { GAME_REGISTRY } from '../games/tokens';
-import { MatchesRepository, RoomsRepository } from '../persistence/repositories';
+import { MatchesRepository, ProfilesRepository, RoomsRepository } from '../persistence/repositories';
 import type { Effects } from '../rooms/effects';
-import { purgeLeftMembers, requireMember } from '../rooms/room.logic';
+import { RoomCloser } from '../rooms/room-closer';
+import { hostGone, purgeLeftMembers, requireMember } from '../rooms/room.logic';
 import type { RoomMember, RoomRecord, SessionRecord } from '../rooms/room.model';
 import { RoomStore } from '../rooms/room.store';
 import { TimerScheduler, type TimerJob } from '../scheduler/timer.scheduler';
@@ -41,6 +42,8 @@ export class GameSessionsService implements OnModuleInit {
     private readonly scheduler: TimerScheduler,
     private readonly matches: MatchesRepository,
     private readonly rooms: RoomsRepository,
+    private readonly profiles: ProfilesRepository,
+    private readonly closer: RoomCloser,
   ) {}
 
   onModuleInit(): void {
@@ -48,17 +51,20 @@ export class GameSessionsService implements OnModuleInit {
     this.scheduler.register('system', (job) => this.onSystemTimer(job));
   }
 
-  start(room: RoomRecord, effects: Effects): void {
+  async start(room: RoomRecord, effects: Effects): Promise<void> {
     const module = this.registry.require(room.gameId);
     const config = module.configSchema.parse(room.config) as Record<string, unknown>;
     const members = [...room.members].sort((a, b) => a.seat - b.seat);
     const players = members.map((m) => m.id);
     const tableError = module.validateTable?.(config, players.length);
     if (tableError) throw new AppError(tableError.code, tableError.message);
+    // Played with the account's chips: everyone brings theirs to the table.
+    const wallets = module.getWallets ? await this.profiles.wallets(players) : undefined;
     const seed = generateSeed();
     const state = module.setup(players, config, createDrbgRng(seed), {
       previousResult: room.lastResult ? { standings: room.lastResult.standings } : null,
       seats: members.map((m) => m.seat),
+      wallets,
     });
 
     const session: SessionRecord = {
@@ -74,6 +80,7 @@ export class GameSessionsService implements OnModuleInit {
       deadline: null,
       timerTotalMs: null,
       timerToken: 0,
+      wallets,
     };
     room.session = session;
     room.status = 'PLAYING';
@@ -136,14 +143,21 @@ export class GameSessionsService implements OnModuleInit {
     this.armTimer(room, module, effects);
   }
 
-  /** SESSION tables: someone who joined mid-session (or came back) sits down; they play from the next round. */
-  seatPlayer(room: RoomRecord, member: RoomMember, effects: Effects): void {
+  /**
+   * SESSION tables: someone who joined mid-session (or came back) sits down,
+   * with their account's chips where the game is played with them; they play
+   * from the next round.
+   */
+  async seatPlayer(room: RoomRecord, member: RoomMember, effects: Effects): Promise<void> {
     const session = room.session;
     const module = session && this.registry.require(session.gameId);
     if (!session || module?.lifecycle !== 'SESSION') return;
+    const wallet = module.getWallets ? (await this.profiles.wallets([member.id]))[member.id] : undefined;
     const firstTime = !Object.hasOwn(session.usernames, member.id);
     session.usernames[member.id] = member.username;
-    this.apply(room, module, sessionActions.joined(member.id, member.seat), SYSTEM_PLAYER_ID, true, effects);
+    if (wallet !== undefined) session.wallets = { ...session.wallets, [member.id]: wallet };
+    const joined = sessionActions.joined(member.id, member.seat, wallet);
+    this.apply(room, module, joined, SYSTEM_PLAYER_ID, true, effects);
     if (firstTime) {
       const { matchId } = session;
       const player = {
@@ -174,6 +188,17 @@ export class GameSessionsService implements OnModuleInit {
     if (session.endRequested)
       throw new AppError(ErrorCode.CannotEnd, 'The session already ends after this round');
     this.requestEnd(room, module, effects);
+  }
+
+  /**
+   * The room is about to close (its host is gone, or it is too old): a SESSION
+   * table ends once the round in play is settled, a MATCH plays on to its end.
+   * Either way the room closes when the game finishes.
+   */
+  wrapUp(room: RoomRecord, effects: Effects): void {
+    const session = room.session;
+    const module = session && this.registry.require(session.gameId);
+    if (module?.lifecycle === 'SESSION') this.requestEnd(room, module, effects);
   }
 
   private requestEnd(room: RoomRecord, module: AnyGameModule, effects: Effects): void {
@@ -210,6 +235,7 @@ export class GameSessionsService implements OnModuleInit {
     effects.defer(() => this.matches.appendAction({ matchId, seq, profileId: actor, action, automatic }));
     effects.defer(() => this.publisher.publishEvents(room.id, matchId, seq, result.events));
     if (module.lifecycle === 'SESSION') this.syncSeats(room, module, effects);
+    if (module.getWallets) this.syncWallets(session, module.getWallets(result.state), effects);
 
     if (module.isFinished(result.state)) {
       this.finish(room, effects, false);
@@ -230,6 +256,23 @@ export class GameSessionsService implements OnModuleInit {
     const session = this.requireSession(room);
     session.players = module.getSeatedPlayers?.(session.state) ?? session.players;
     if (purgeLeftMembers(room, session.players)) effects.defer(() => this.publisher.publishRoom(room));
+  }
+
+  /**
+   * Games played with the account's chips: whatever changed (a hand settled,
+   * a rebuy) is written to the profiles, so an account is always what its
+   * owner holds — also for anyone looking at their profile meanwhile.
+   */
+  private syncWallets(
+    session: SessionRecord,
+    wallets: Readonly<Record<string, number>>,
+    effects: Effects,
+  ): void {
+    const saved = session.wallets ?? {};
+    const changed = Object.fromEntries(Object.entries(wallets).filter(([id, chips]) => saved[id] !== chips));
+    if (Object.keys(changed).length === 0) return;
+    session.wallets = { ...saved, ...changed };
+    effects.defer(() => this.profiles.setWallets(changed));
   }
 
   /**
@@ -380,9 +423,14 @@ export class GameSessionsService implements OnModuleInit {
     if (room.members.length === 0) room.status = 'CLOSED';
 
     effects.defer(() => this.matches.finish(session.matchId, standings, aborted));
-    effects.defer(() => this.rooms.setStatus(room.id, room.status));
     effects.defer(() => this.publisher.publishFinished(finishedRoom, result));
-    effects.defer(() => this.publisher.publishRoom(room));
+    const closing = room.closing ?? (hostGone(room) ? 'HOST_LEFT' : null);
+    if (room.status === 'OPEN' && closing) {
+      this.closer.close(room, effects, closing);
+    } else {
+      effects.defer(() => this.rooms.setStatus(room.id, room.status));
+      effects.defer(() => this.publisher.publishRoom(room));
+    }
     this.logger.log({ roomId: room.id, matchId: session.matchId, aborted }, 'Match finished');
   }
 

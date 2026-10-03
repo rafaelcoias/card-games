@@ -68,7 +68,9 @@ function simulate(hands: number, seed: string): Measurements {
   const batchSize = hands / BATCHES;
   const batchStart = { hands: 0, houseNet: 0 };
   // Deep stacks: nobody runs short of chips to double or split.
-  let state = blackjack.setup(PLAYERS, config({ startingStack: 100_000 }), createSeededRng(seed));
+  let state = blackjack.setup(PLAYERS, config(), createSeededRng(seed), {
+    wallets: Object.fromEntries(PLAYERS.map((id) => [id, 100_000])),
+  });
 
   while (m.hands < hands || state.phase !== 'BETTING') {
     const player =

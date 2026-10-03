@@ -4,6 +4,7 @@ import type { MatchHistoryEntry } from '@cardroom/shared';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useProfile } from '@/components/app/profile-context';
+import { ChipsBadge } from '@/components/players/chips-badge';
 import { MatchHistory } from '@/components/players/match-history';
 import { playerHref } from '@/components/players/player-link';
 import { StatsSummary } from '@/components/players/stats-summary';
@@ -25,7 +26,7 @@ function AccountProfile() {
   const player = state.kind === 'ready' ? state.player : null;
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[380px_1fr]">
+    <div className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)] gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[380px_minmax(0,1fr)]">
       <section className="panel h-fit p-6" aria-labelledby="profile-heading">
         <h1 id="profile-heading" className="font-display text-3xl font-semibold tracking-tight">
           Perfil
@@ -33,6 +34,9 @@ function AccountProfile() {
         <p className="mt-1 text-sm text-muted">
           Membro desde {memberSince.format(new Date(profile.createdAt))}
         </p>
+        <div className="mt-3">
+          <ChipsBadge chips={player?.chips ?? profile.chips} />
+        </div>
         <div className="mt-6">
           <ProfileForm initial={profile} submitLabel="Guardar alterações" />
         </div>
@@ -78,7 +82,7 @@ function GuestProfile() {
   }, []);
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[380px_1fr]">
+    <div className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)] gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[380px_minmax(0,1fr)]">
       <section className="panel h-fit p-6" aria-labelledby="profile-heading">
         <h1 id="profile-heading" className="font-display text-3xl font-semibold tracking-tight">
           Convidado
@@ -86,6 +90,9 @@ function GuestProfile() {
         <p className="mt-1 text-sm text-muted">
           Estás a jogar sem conta. O teu nome não fica reservado e, se saíres, não voltas a esta sessão.
         </p>
+        <div className="mt-3">
+          <ChipsBadge chips={profile.chips} />
+        </div>
         <Link
           href="/register"
           className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-xl bg-gold font-semibold text-gold-ink hover:bg-gold-strong"

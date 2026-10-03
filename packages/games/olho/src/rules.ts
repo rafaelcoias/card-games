@@ -128,7 +128,7 @@ export const PLAY_ERRORS: Readonly<Record<PlayErrorCode, string>> = {
  * Contract §5.1. Opening: any single, pair, triple or four of one rank, or a
  * joker. Following: as many cards, equal or higher; a joker beats anything;
  * 2s beat a play of N ≤ 3 cards with max(1, N − 1) or more of them, and on 2s
- * only more 2s (or as many, which skips the next player). `null` = valid.
+ * only strictly more 2s — a 2 never answers a 2. `null` = valid.
  */
 export function checkPlay(context: PlayContext, cards: readonly Pick<Card, 'rank'>[]): PlayErrorCode | null {
   const first = cards[0];
@@ -145,7 +145,7 @@ export function checkPlay(context: PlayContext, cards: readonly Pick<Card, 'rank
   if (count === null || topRank === null) return null;
   if (rank === JOKER) return null;
   if (rank === '2') {
-    const needed = topRank === '2' ? count : Math.max(1, count - 1);
+    const needed = topRank === '2' ? count + 1 : Math.max(1, count - 1);
     return cards.length >= needed ? null : 'NOT_ENOUGH_TWOS';
   }
   if (cards.length !== count) return 'WRONG_COUNT';

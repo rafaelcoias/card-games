@@ -8,6 +8,7 @@ import {
   type Rng,
   type ScheduledAction,
   type SetupOptions,
+  WALLET,
 } from '@cardroom/game-core';
 import {
   BET_UNIT,
@@ -79,7 +80,9 @@ export function setup(
     roundsDealt: 0,
     dealerName: pickOne(DEALER_NAMES, rng),
     seats: players
-      .map((playerId, i) => newSeat(playerId, seatIndexes[i] as number, config.startingStack))
+      .map((playerId, i) =>
+        newSeat(playerId, seatIndexes[i] as number, options.wallets?.[playerId] ?? WALLET.start),
+      )
       .sort((a, b) => a.seatIndex - b.seatIndex),
     departed: [],
     turn: null,
@@ -97,11 +100,13 @@ export function setup(
   return reshuffle(state, shuffler);
 }
 
+/** A player sits down with the chips of their account. */
 function newSeat(playerId: PlayerId, seatIndex: number, stack: Chips): Seat {
   return {
     seatIndex,
     playerId,
     stack,
+    buyIn: stack,
     rebuys: 0,
     bet: null,
     lastBet: null,
@@ -207,7 +212,7 @@ function applySystem(d: Draft, action: BlackjackSystemAction): Failure | null {
       openBetting(d);
       return null;
     case 'SYS_PLAYER_JOINED':
-      return playerJoined(d, action.playerId, action.seatIndex);
+      return playerJoined(d, action.playerId, action.seatIndex, action.wallet);
     case 'SYS_PLAYER_LEFT':
       return playerLeft(d, action.playerId);
     case 'SYS_END_SESSION':
@@ -289,11 +294,9 @@ function closeBettingIfDone(d: Draft): void {
 }
 
 function rebuy(d: Draft, seat: Seat): Failure | null {
-  const { config } = d.s;
-  if (!config.allowRebuy) return failure('REBUY_DISABLED', 'This table has no rebuys');
   if (d.s.phase !== 'BETTING' || seat.bet !== null) return failure('WRONG_PHASE', 'Rebuy before you bet');
-  if (seat.stack >= config.minBet) return failure('REBUY_NOT_NEEDED', 'You still have chips to bet');
-  seat.stack += config.startingStack;
+  if (seat.stack >= d.s.config.minBet) return failure('REBUY_NOT_NEEDED', 'You still have chips to bet');
+  seat.stack += WALLET.rebuy;
   seat.rebuys += 1;
   d.events.push({
     type: 'PlayerRebought',
@@ -698,6 +701,7 @@ function removeSeat(d: Draft, seat: Seat): void {
   d.s.departed.push({
     playerId: seat.playerId,
     stack: seat.stack,
+    buyIn: seat.buyIn,
     rebuys: seat.rebuys,
     roundsPlayed: seat.roundsPlayed,
   });
@@ -705,11 +709,12 @@ function removeSeat(d: Draft, seat: Seat): void {
 }
 
 /**
- * A player sits down mid-session: they play from the next deal. Someone who
- * got up earlier gets their chips back (leaving never resets a stack), and
- * someone who was on their way out simply stays.
+ * A player sits down mid-session with the chips of their account: they play
+ * from the next deal. Someone who got up earlier keeps their session record
+ * (what their account gained elsewhere meanwhile counts as brought, not won),
+ * and someone who was on their way out simply stays.
  */
-function playerJoined(d: Draft, playerId: PlayerId, seatIndex: number): Failure | null {
+function playerJoined(d: Draft, playerId: PlayerId, seatIndex: number, wallet?: Chips): Failure | null {
   const s = d.s;
   if (s.phase === 'FINISHED') return failure('SESSION_OVER', 'The session is over');
   const existing = findSeat(s, playerId);
@@ -730,10 +735,11 @@ function playerJoined(d: Draft, playerId: PlayerId, seatIndex: number): Failure 
   if (s.seats.some((seat) => seat.seatIndex === seatIndex))
     return failure('SEAT_TAKEN', 'That seat is taken');
 
-  const seat = newSeat(playerId, seatIndex, s.config.startingStack);
   const before = s.departed.find((p) => p.playerId === playerId);
+  const seat = newSeat(playerId, seatIndex, wallet ?? before?.stack ?? WALLET.start);
   if (before) {
-    Object.assign(seat, { stack: before.stack, rebuys: before.rebuys, roundsPlayed: before.roundsPlayed });
+    seat.buyIn = before.buyIn + (seat.stack - before.stack);
+    Object.assign(seat, { rebuys: before.rebuys, roundsPlayed: before.roundsPlayed });
     s.departed = s.departed.filter((p) => p !== before);
   }
   s.seats = [...s.seats, seat].sort((a, b) => a.seatIndex - b.seatIndex);

@@ -14,7 +14,7 @@ import type { GameClientDefinition, ResultStyle } from '@/games/types';
 import { useSoundPreference } from '@/games/shared/sounds';
 import { describeError } from '@/lib/errors';
 import { gameFeed } from '@/lib/realtime/game-feed';
-import { useRoomCommands } from '@/lib/realtime/socket-provider';
+import { CLOSED_MESSAGE, useRoomCommands } from '@/lib/realtime/socket-provider';
 import { useRealtime } from '@/lib/realtime/store';
 import { toast } from '@/lib/toast';
 import { ChatBubbles } from './chat-bubbles';
@@ -26,6 +26,7 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
   const router = useRouter();
   const commands = useRoomCommands();
   const result = useRealtime((s) => s.result);
+  const closed = useRealtime((s) => s.closed);
   const unread = useRealtime((s) => s.unreadChat);
   const sound = useSoundPreference();
   const [chatOpen, setChatOpen] = useState(false);
@@ -62,6 +63,21 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
     useRealtime.getState().leaveRoom();
     gameFeed.reset();
     router.push('/lobby');
+  };
+
+  /**
+   * From the results to the room's lobby — or to the list of rooms, if the
+   * room closed meanwhile. A host who had asked for a rematch takes it back:
+   * in the lobby they start the match themselves.
+   */
+  const backToRoom = () => {
+    if (closed) {
+      void leave();
+      return;
+    }
+    const me = room.players.find((p) => p.id === selfId);
+    if (room.hostId === selfId && me?.ready) void commands.setReady(false);
+    useRealtime.getState().setResult(null);
   };
 
   return (
@@ -152,9 +168,10 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
         result={shownResult}
         style={game?.resultStyle ?? 'placement'}
         game={game}
+        room={room}
         selfId={selfId}
         leaving={leaving}
-        onClose={() => useRealtime.getState().setResult(null)}
+        onClose={backToRoom}
         onLeave={() => void leave()}
       />
 
@@ -232,13 +249,15 @@ interface ResultsModalProps {
   result: MatchResult | null;
   style: ResultStyle;
   game: GameClientDefinition | undefined;
+  room: RoomState;
   selfId: string;
   leaving: boolean;
   onClose: () => void;
   onLeave: () => void;
 }
 
-function ResultsModal({ result, style, game, selfId, leaving, onClose, onLeave }: ResultsModalProps) {
+function ResultsModal({ result, style, game, room, selfId, leaving, onClose, onLeave }: ResultsModalProps) {
+  const closed = useRealtime((s) => s.closed);
   const standings = result?.standings ?? [];
   const mine = standings.find((s) => s.playerId === selfId);
   const losers = standings.filter((s) => s.outcome === 'LOSER');
@@ -383,13 +402,118 @@ function ResultsModal({ result, style, game, selfId, leaving, onClose, onLeave }
           />
         </div>
       )}
+      {closed ? (
+        <>
+          <p
+            className="mt-5 rounded-xl border border-line bg-white/3 px-4 py-3 text-sm text-muted"
+            role="status"
+          >
+            {CLOSED_MESSAGE[closed]}
+          </p>
+          <div className="mt-5 flex justify-end">
+            <Button onClick={onLeave} loading={leaving} className="max-sm:w-full">
+              Voltar às salas
+            </Button>
+          </div>
+        </>
+      ) : (
+        <Rematch
+          room={room}
+          game={game}
+          selfId={selfId}
+          leaving={leaving}
+          onClose={onClose}
+          onLeave={onLeave}
+        />
+      )}
+    </Modal>
+  );
+}
+
+/**
+ * "Jogar outra vez" straight from the results: everyone sees who is in, and
+ * the next match starts by itself once the whole table is (UI: no trip back
+ * to the lobby, no "Estou pronto").
+ */
+function Rematch({
+  room,
+  game,
+  selfId,
+  leaving,
+  onClose,
+  onLeave,
+}: {
+  room: RoomState;
+  game: GameClientDefinition | undefined;
+  selfId: string;
+  leaving: boolean;
+  onClose: () => void;
+  onLeave: () => void;
+}) {
+  const commands = useRoomCommands();
+  const [sending, setSending] = useState(false);
+  const me = room.players.find((p) => p.id === selfId);
+  const inForRematch = me?.ready === true;
+  const missing = room.players.filter((p) => !p.ready);
+  const tooFew = room.players.length < (game?.minPlayers ?? 2);
+
+  const toggle = async () => {
+    setSending(true);
+    const ack = await commands.setReady(!inForRematch);
+    setSending(false);
+    if (!ack.ok) toast.error(describeError(ack.error));
+  };
+
+  const status = tooFew
+    ? 'Faltam jogadores para outra partida: volta à sala e partilha o código.'
+    : !inForRematch
+      ? 'Começa sozinha quando todos quiserem jogar outra vez.'
+      : missing.length > 0
+        ? `À espera de ${missing.map((p) => (p.id === selfId ? 'ti' : p.username)).join(', ')}…`
+        : 'A começar…';
+
+  return (
+    <>
+      {/* A label, not a heading: the dialog keeps a single title (the result). */}
+      <section className="mt-5 rounded-xl bg-white/3 px-4 py-3" aria-labelledby="rematch-label">
+        <p id="rematch-label" className="text-xs font-bold uppercase tracking-[0.14em] text-subtle">
+          Jogar outra vez
+        </p>
+        <ul className="mt-2 flex flex-wrap gap-1.5">
+          {room.players.map((p) => (
+            <li
+              key={p.id}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                p.ready ? 'bg-success/15 text-success' : 'bg-white/5 text-muted'
+              }`}
+            >
+              <span aria-hidden="true">{p.ready ? '✓' : '…'}</span>
+              {p.id === selfId ? 'Tu' : p.username}
+              <span className="sr-only">{p.ready ? ' quer jogar outra vez' : ' ainda não respondeu'}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs text-subtle" role="status">
+          {status}
+        </p>
+      </section>
       <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button variant="ghost" onClick={onLeave} loading={leaving}>
-          Voltar ao lobby
+          Sair da sala
         </Button>
-        <Button onClick={onClose}>Voltar à sala</Button>
+        <Button variant="secondary" onClick={onClose}>
+          Voltar à sala
+        </Button>
+        <Button
+          variant={inForRematch ? 'secondary' : 'primary'}
+          onClick={() => void toggle()}
+          loading={sending}
+          disabled={tooFew && !inForRematch}
+        >
+          {inForRematch ? 'Afinal, não' : 'Jogar outra vez'}
+        </Button>
       </div>
-    </Modal>
+    </>
   );
 }
 

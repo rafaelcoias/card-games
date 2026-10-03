@@ -1,6 +1,7 @@
 'use client';
 
 import type { BlackjackClientAction, Decision } from '@cardroom/blackjack';
+import { WALLET } from '@cardroom/game-core';
 import clsx from 'clsx';
 import { motion } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
@@ -24,7 +25,7 @@ const panel = 'w-full max-w-3xl rounded-2xl bg-black/40 px-3 py-2.5 backdrop-blu
 
 export interface BettingPanelProps {
   seat: SceneSeat;
-  rules: { minBet: number; maxBet: number; startingStack: number };
+  rules: { minBet: number; maxBet: number };
   actions: readonly BlackjackClientAction[];
   timer: TimerLike | null;
   busy: boolean;
@@ -52,13 +53,14 @@ export function BettingPanel({ seat, rules, actions, timer, busy, roundKey, send
     return (
       <div className={clsx(panel, 'flex flex-wrap items-center gap-3')} role="group" aria-label="Recompra">
         <p className="min-w-0 flex-1 text-sm">
-          Ficaste sem fichas para a mínima ({rules.minBet}).{' '}
+          Ficaste sem fichas para a mínima ({rules.minBet}). Podes comprar mais {WALLET.rebuy} para a tua
+          conta.{' '}
           {seat.rebuys > 0 && (
             <span className="text-ivory/60">Já recompraste {plural(seat.rebuys, 'vez', 'vezes')}.</span>
           )}
         </p>
         <Button disabled={busy} onClick={() => send({ type: 'REBUY' })}>
-          Recomprar {rules.startingStack}
+          Recomprar {WALLET.rebuy}
         </Button>
       </div>
     );

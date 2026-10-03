@@ -20,9 +20,12 @@ import { TimerScheduler, type TimerJob } from '../scheduler/timer.scheduler';
 import { GameSessionsService } from '../sessions/game-sessions.service';
 import { RoomPublisher } from '../sessions/room-publisher';
 import type { Effects } from './effects';
+import { RoomCloser } from './room-closer';
 import {
   addMember,
   appendChat,
+  applySettings,
+  assertCanConfigure,
   assertCanKick,
   assertCanStart,
   findMember,
@@ -31,9 +34,10 @@ import {
   removeMember,
   requireHost,
   requireMember,
+  startsByItself,
   type MemberProfile,
 } from './room.logic';
-import type { RoomRecord } from './room.model';
+import { ROOM_MAX_AGE_MS, type RoomRecord } from './room.model';
 import { RoomStore } from './room.store';
 
 /** Seats of absent players in a lobby are released quickly; in a match they get the full grace period. */
@@ -54,50 +58,41 @@ export class RoomsService implements OnModuleInit {
     private readonly emitter: RealtimeEmitter,
     private readonly scheduler: TimerScheduler,
     private readonly roomsRepository: RoomsRepository,
+    private readonly closer: RoomCloser,
   ) {}
 
   onModuleInit(): void {
     this.scheduler.register('grace', (job) => this.onGraceExpired(job));
+    this.scheduler.register('expire', (job) => this.onExpired(job));
   }
 
   async create(user: MemberProfile, input: CreateRoomInput): Promise<JoinedRoom> {
-    const module = this.registry.get(input.gameId);
-    if (!module) throw new AppError(ErrorCode.UnknownGame, 'Unknown game');
-    if (input.maxPlayers < module.minPlayers || input.maxPlayers > module.maxPlayers) {
-      throw new AppError(
-        ErrorCode.PlayerCount,
-        `${module.name} is played by ${module.minPlayers}–${module.maxPlayers}`,
-      );
-    }
-    const parsedConfig = module.configSchema.safeParse(input.config);
-    if (!parsedConfig.success) throw new AppError(ErrorCode.Validation, 'Invalid game settings');
-    const tableError = module.validateTable?.(parsedConfig.data, input.maxPlayers);
-    if (tableError) throw new AppError(tableError.code, tableError.message);
-
+    const settings = this.settingsFor(input);
     await this.leaveCurrentRoom(user.id);
     const id = randomUUID();
     const code = await this.reserveUniqueCode(id);
     const room: RoomRecord = {
       id,
       code,
-      gameId: module.id,
-      lifecycle: module.lifecycle,
+      ...settings,
       hostId: user.id,
-      isPrivate: input.isPrivate,
-      maxPlayers: input.maxPlayers,
       status: 'OPEN',
-      config: parsedConfig.data as Record<string, unknown>,
       createdAt: Date.now(),
       members: [],
       chat: [],
       session: null,
       lastResult: null,
+      closing: null,
     };
     addMember(room, user);
 
     return this.store.withLock(id, async () => {
       await this.store.save(room);
       await this.store.setUserRoom(user.id, id);
+      await this.scheduler.schedule(
+        { kind: 'expire', roomId: id, token: id },
+        room.createdAt + ROOM_MAX_AGE_MS,
+      );
       this.emitter.subscribeUserToRoom(user.id, id);
       await this.roomsRepository
         .create({
@@ -128,7 +123,7 @@ export class RoomsService implements OnModuleInit {
       await this.store.setUserRoom(user.id, room.id);
       this.emitter.subscribeUserToRoom(user.id, room.id);
       // A running session table seats newcomers, and takes back whoever had got up.
-      if (!existing || returning) this.sessions.seatPlayer(room, member, effects);
+      if (!existing || returning) await this.sessions.seatPlayer(room, member, effects);
       if (existing) this.sessions.onPresenceChanged(room, effects);
       this.sessions.sendSnapshot(room, user.id, effects);
       effects.defer(() => this.publisher.publishRoom(room));
@@ -142,19 +137,43 @@ export class RoomsService implements OnModuleInit {
     await this.removeFromRoom(roomId, userId, 'left');
   }
 
+  /**
+   * Ready in the lobby — or, from the results, "play again": once everyone at
+   * the table (host included) wants a rematch, it starts by itself.
+   */
   async setReady(userId: string, ready: boolean): Promise<void> {
-    await this.mutateCurrent(userId, (room, effects) => {
+    await this.mutateCurrent(userId, async (room, effects) => {
       if (room.status !== 'OPEN') throw new AppError(ErrorCode.RoomInProgress, 'The match already started');
       requireMember(room, userId).ready = ready;
+      const module = this.registry.require(room.gameId);
+      if (startsByItself(room, module.minPlayers, Math.min(module.maxPlayers, room.maxPlayers))) {
+        await this.sessions.start(room, effects);
+        this.logger.log({ roomId: room.id, players: room.members.length }, 'Rematch started');
+        return;
+      }
       effects.defer(() => this.publisher.publishRoom(room));
     });
   }
 
-  async start(userId: string): Promise<void> {
+  /** Host, between matches: another game or other rules for the same players — almost a new room. */
+  async configure(userId: string, input: CreateRoomInput): Promise<void> {
+    const settings = this.settingsFor(input);
     await this.mutateCurrent(userId, (room, effects) => {
+      assertCanConfigure(room, userId, settings.maxPlayers);
+      const gameChanged = settings.gameId !== room.gameId;
+      applySettings(room, settings);
+      const { id, gameId, isPrivate, maxPlayers } = room;
+      effects.defer(() => this.roomsRepository.updateSettings(id, { gameId, isPrivate, maxPlayers }));
+      effects.defer(() => this.publisher.publishRoom(room));
+      this.logger.log({ roomId: id, gameId, gameChanged }, 'Room settings changed');
+    });
+  }
+
+  async start(userId: string): Promise<void> {
+    await this.mutateCurrent(userId, async (room, effects) => {
       const module = this.registry.require(room.gameId);
       assertCanStart(room, userId, module.minPlayers, Math.min(module.maxPlayers, room.maxPlayers));
-      this.sessions.start(room, effects);
+      await this.sessions.start(room, effects);
       this.logger.log({ roomId: room.id, players: room.members.length }, 'Match started');
     });
   }
@@ -285,15 +304,38 @@ export class RoomsService implements OnModuleInit {
         const current = findMember(fresh, userId);
         if (!current || current.connected || String(current.disconnectedAt) !== disconnectedAt) return;
         current.away = true;
+        // A host gone for good closes the room once the game in play is over (unless they come back first).
+        if (fresh.hostId === userId) this.sessions.wrapUp(fresh, effects);
         this.sessions.onPresenceChanged(fresh, effects);
-        effects.defer(() => this.publisher.publishRoom(fresh));
+        if (fresh.status !== 'CLOSED') effects.defer(() => this.publisher.publishRoom(fresh));
       });
     } else {
       await this.removeFromRoom(job.roomId, userId, 'timeout');
     }
   }
 
-  /** Shared path for leaving, being kicked and lobby grace expiry (inside a room mutation). */
+  /** The room reached its maximum age: it closes now, or as soon as the game in play is over. */
+  private async onExpired(job: TimerJob): Promise<void> {
+    await this.store
+      .mutate(job.roomId, (room, effects) => {
+        if (!room.session) {
+          this.closer.close(room, effects, 'EXPIRED');
+          return;
+        }
+        room.closing = 'EXPIRED';
+        this.sessions.wrapUp(room, effects);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof AppError && error.code === ErrorCode.RoomNotFound) return;
+        throw error;
+      });
+  }
+
+  /**
+   * Shared path for leaving, being kicked and lobby grace expiry (inside a room
+   * mutation). The host going closes the room: at once in the lobby, or when
+   * the game in play is over.
+   */
   private detach(
     room: RoomRecord,
     effects: Effects,
@@ -301,20 +343,27 @@ export class RoomsService implements OnModuleInit {
     reason: 'left' | 'kicked' | 'timeout',
   ): void {
     const roomId = room.id;
+    const wasHost = room.hostId === userId;
     removeMember(room, userId);
-    this.sessions.releasePlayer(room, userId, effects);
-    if (room.status === 'OPEN' && isEmpty(room)) room.status = 'CLOSED';
-    this.sessions.onPresenceChanged(room, effects);
-
     effects.defer(() => this.store.clearUserRoom(userId, roomId));
     effects.defer(() => this.emitter.unsubscribeUserFromRoom(userId, roomId));
     if (reason === 'kicked') effects.defer(() => this.emitter.toUser(userId, 'room:kicked', { roomId }));
+    this.logger.log({ roomId, userId, reason }, 'Player removed from room');
+
+    if (wasHost && !room.session) {
+      this.closer.close(room, effects, 'HOST_LEFT');
+      return;
+    }
+    this.sessions.releasePlayer(room, userId, effects);
+    if (wasHost) this.sessions.wrapUp(room, effects);
+    if (room.status === 'OPEN' && isEmpty(room)) room.status = 'CLOSED';
+    this.sessions.onPresenceChanged(room, effects);
+
     if (room.status === 'CLOSED') {
       effects.defer(() => this.roomsRepository.setStatus(roomId, 'CLOSED'));
     } else {
       effects.defer(() => this.publisher.publishRoom(room));
     }
-    this.logger.log({ roomId, userId, reason }, 'Player removed from room');
   }
 
   private async removeFromRoom(roomId: string, userId: string, reason: 'left' | 'timeout'): Promise<void> {
@@ -343,6 +392,31 @@ export class RoomsService implements OnModuleInit {
       throw new AppError(ErrorCode.AlreadyInRoom, `You are still playing in room ${room.code}`);
     }
     await this.removeFromRoom(roomId, userId, 'left');
+  }
+
+  /** A room's game and rules, checked against the game (player range, settings, table size). */
+  private settingsFor(
+    input: CreateRoomInput,
+  ): Pick<RoomRecord, 'gameId' | 'lifecycle' | 'isPrivate' | 'maxPlayers' | 'config'> {
+    const module = this.registry.get(input.gameId);
+    if (!module) throw new AppError(ErrorCode.UnknownGame, 'Unknown game');
+    if (input.maxPlayers < module.minPlayers || input.maxPlayers > module.maxPlayers) {
+      throw new AppError(
+        ErrorCode.PlayerCount,
+        `${module.name} is played by ${module.minPlayers}–${module.maxPlayers}`,
+      );
+    }
+    const parsedConfig = module.configSchema.safeParse(input.config);
+    if (!parsedConfig.success) throw new AppError(ErrorCode.Validation, 'Invalid game settings');
+    const tableError = module.validateTable?.(parsedConfig.data, input.maxPlayers);
+    if (tableError) throw new AppError(tableError.code, tableError.message);
+    return {
+      gameId: module.id,
+      lifecycle: module.lifecycle,
+      isPrivate: input.isPrivate,
+      maxPlayers: input.maxPlayers,
+      config: parsedConfig.data as Record<string, unknown>,
+    };
   }
 
   private async mutateCurrent(

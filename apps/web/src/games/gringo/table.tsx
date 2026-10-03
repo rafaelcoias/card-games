@@ -2,11 +2,13 @@
 
 import type { PlayerId } from '@cardroom/game-core';
 import {
+  PACE,
   powerOf,
   type GringoAction,
   type GringoClientAction,
   type GringoEvent,
   type GringoView,
+  type PowerType,
 } from '@cardroom/gringo';
 import type { RoomPlayer } from '@cardroom/shared';
 import { CARD_WIDTH, cardHeight } from '@cardroom/ui';
@@ -25,12 +27,21 @@ import { useElementSize } from '../shared/use-element-size';
 import { useTableLayout, useViewport } from '../shared/use-media';
 import type { GameTableProps } from '../types';
 import { Center } from './center';
-import { POWER_LABEL, POWER_PROMPT, POWER_RANKS, listNames, missing, points, slotLabel } from './copy';
+import {
+  POWER_LABEL,
+  POWER_PROMPT,
+  POWER_RANKS,
+  POWER_TITLE,
+  listNames,
+  missing,
+  points,
+  slotLabel,
+} from './copy';
 import type { SlotMode } from './grid';
 import { gringoSizes, seatBox, type Sizes } from './layout';
 import { applyEvent, dealDurationMs, mySeat, sceneFromView, type Fx, type Scene } from './scene';
 import { Seat, type Stamp } from './seat';
-import { ActionBar, MyGrid } from './self-area';
+import { ActionBar, MyGrid, type Coach } from './self-area';
 
 const BUBBLE_MS = 1600;
 const STAMP_MS = 1500;
@@ -366,9 +377,10 @@ export function GringoTableView({
   };
 
   const myMode = (index: number): SlotMode => {
-    if (snaps.has(index)) return current.armed === index ? 'armed' : 'target';
-    if (swapInto.has(index) || kingSwaps.has(index) || peeks.has(key(selfId, index))) return 'target';
-    if (blindMine.has(index)) return current.mine === index ? 'selected' : 'target';
+    if (snaps.has(index)) return current.armed === index ? 'armed' : 'snap';
+    if (swapInto.has(index) || kingSwaps.has(index)) return 'swap';
+    if (peeks.has(key(selfId, index))) return 'peek';
+    if (blindMine.has(index)) return current.mine === index ? 'selected' : 'pick';
     return 'none';
   };
   const onMine = (index: number) => {
@@ -389,9 +401,9 @@ export function GringoTableView({
   const theirMode =
     (owner: PlayerId) =>
     (index: number): SlotMode => {
-      if (peeks.has(key(owner, index))) return 'target';
+      if (peeks.has(key(owner, index))) return 'peek';
       if (blindTheirs.has(key(owner, index))) {
-        return current.theirs?.owner === owner && current.theirs.index === index ? 'selected' : 'target';
+        return current.theirs?.owner === owner && current.theirs.index === index ? 'selected' : 'pick';
       }
       return 'none';
     };
@@ -443,6 +455,12 @@ export function GringoTableView({
 
   const target = scene.power?.target ?? null;
   const watchedIn = (owner: PlayerId) => (target?.owner === owner ? target.index : null);
+  const movedIn = useMemo(() => {
+    const byOwner = new Map<PlayerId, Set<number>>();
+    for (const { owner, index } of scene.moved)
+      byOwner.set(owner, (byOwner.get(owner) ?? new Set()).add(index));
+    return (owner: PlayerId): ReadonlySet<number> => byOwner.get(owner) ?? NONE;
+  }, [scene.moved]);
   const finalOf = (id: PlayerId) =>
     scene.final ? { total: scene.final.scores[id] ?? 0, winner: scene.final.winners.includes(id) } : null;
   const deal = scene.dealing ? scene : null;
@@ -465,6 +483,7 @@ export function GringoTableView({
       lastTurn={scene.gringo?.remaining.includes(seat.id) ?? false}
       peeking={scene.phase === 'INITIAL_PEEK'}
       watched={watchedIn(seat.id)}
+      moved={movedIn(seat.id)}
       stamp={stamps[seat.id] ?? null}
       final={finalOf(seat.id)}
       redKingValue={redKing}
@@ -473,14 +492,19 @@ export function GringoTableView({
     />
   );
 
-  const hint =
-    current.armed !== null && snaps.has(current.armed)
-      ? `Toca outra vez para bater a ${slotLabel(current.armed)}`
-      : current.mine !== null
-        ? 'Agora toca numa carta de outro jogador'
-        : current.theirs
-          ? 'Agora toca numa carta tua'
-          : null;
+  const peekDone = find('POWER_PEEK_DONE');
+  const coach = coachFor({
+    scene,
+    decisionKey,
+    picks: current,
+    memorising,
+    timer: pendingTimer,
+    drawnPower: discardPower ? drawnPower(scene) : null,
+    canSwap: swapInto.size > 0,
+    snapArmed: current.armed !== null && snaps.has(current.armed),
+    peekShowing: peekDone !== undefined,
+    kingDeciding: keep !== undefined,
+  });
 
   const message = statusMessage(scene, selfId, actions, nameOf);
   const highlight = actions.length > 0;
@@ -543,10 +567,10 @@ export function GringoTableView({
             onSelect={onMine}
             raised={myRaised}
             watched={watchedIn(me.id)}
+            moved={movedIn(me.id)}
             stamp={stamps[me.id] ?? null}
             redKingValue={redKing}
-            memorise={memorising ? pendingTimer : null}
-            hint={hint}
+            coach={coach}
           />
         )}
         <ActionBar
@@ -576,14 +600,13 @@ export function GringoTableView({
               Passar
             </Button>
           )}
+          {discardPower && scene.drawn?.face && <PowerButton onClick={() => void send(discardPower)} />}
           {discardPlain && (
             <Button variant={discardPower ? 'secondary' : 'primary'} onClick={() => void send(discardPlain)}>
               Descartar
             </Button>
           )}
-          {discardPower && scene.drawn?.face && (
-            <PowerButton label={powerOfDrawn(scene)} onClick={() => void send(discardPower)} />
-          )}
+          {peekDone && <Button onClick={() => void send(peekDone)}>Já memorizei</Button>}
           {skip && (
             <Button variant="secondary" onClick={() => void send(skip)}>
               Não usar
@@ -600,14 +623,13 @@ export function GringoTableView({
   );
 }
 
-/** The power of the card the viewer holds, for its button ("Descartar e espreitar…"). */
-function powerOfDrawn(scene: Scene): string {
+/** The power of the card the viewer holds (its face comes with the view). */
+function drawnPower(scene: Scene): PowerType | null {
   const face = scene.drawn?.face;
-  const type = face ? powerOf(face, scene.rules.powerSet) : null;
-  return type ? POWER_LABEL[type] : 'usar o poder';
+  return face ? powerOf(face, scene.rules.powerSet) : null;
 }
 
-function PowerButton({ label, onClick }: { label: string; onClick: () => void }) {
+function PowerButton({ onClick }: { onClick: () => void }) {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
@@ -615,10 +637,103 @@ function PowerButton({ label, onClick }: { label: string; onClick: () => void })
       transition={{ type: 'spring', stiffness: 480, damping: 28 }}
     >
       <Button onClick={onClick} className="w-full">
-        <span aria-hidden="true">✨</span> Descartar e {label}
+        <span aria-hidden="true">✨</span> Usar poder
       </Button>
     </motion.div>
   );
+}
+
+export interface CoachInput {
+  scene: Scene;
+  /** Restarts the coach (and its bar) with every new decision. */
+  decisionKey: string;
+  picks: Picks;
+  memorising: boolean;
+  timer: TimerSnapshot | null;
+  /** The power of the card the viewer drew, when it can be used. */
+  drawnPower: PowerType | null;
+  /** The drawn card can go into one of the viewer's slots. */
+  canSwap: boolean;
+  snapArmed: boolean;
+  /** A 10's or a queen's card is turned for the viewer. */
+  peekShowing: boolean;
+  /** A king's card was seen: swap it in, or not. */
+  kingDeciding: boolean;
+}
+
+/**
+ * What the viewer must do now, spelled out over their own cards (UI §4–§6):
+ * every power is one clear step at a time, with the time it has left.
+ */
+export function coachFor(input: CoachInput): Coach | null {
+  const { scene, decisionKey, picks, timer } = input;
+  const at = (step: string) => `${decisionKey}:${step}`;
+  if (input.memorising) {
+    return { key: 'memorise', title: 'Memoriza as tuas cartas!', tone: 'gold', drain: timer };
+  }
+  if (input.snapArmed && picks.armed !== null) {
+    return {
+      key: at(`armed:${picks.armed}`),
+      title: `Toca outra vez para bater a ${slotLabel(picks.armed)}`,
+      tone: 'danger',
+      drain: null,
+    };
+  }
+  if (picks.mine !== null || picks.theirs) {
+    return {
+      key: at('jack'),
+      title: picks.mine !== null ? 'Agora toca numa carta de outro jogador' : 'Agora toca numa carta tua',
+      detail: 'As duas trocam de lugar, sem ninguém as ver',
+      tone: 'gold',
+      drain: timer,
+    };
+  }
+  if (input.peekShowing) {
+    return {
+      key: at('peek'),
+      title: '👁 Memoriza esta carta!',
+      detail: 'Volta a ficar virada para baixo daqui a pouco',
+      tone: 'gold',
+      drain: { totalMs: PACE.peek, remainingMs: PACE.peek },
+    };
+  }
+  if (input.kingDeciding) {
+    return {
+      key: at('king'),
+      title: 'Ficas com esta carta?',
+      detail: 'Toca ⇄ numa carta tua para as trocar, ou «Não trocar»',
+      tone: 'gold',
+      drain: timer,
+    };
+  }
+  const power = scene.phase === 'POWER' && scene.power?.step === 'CHOOSE' ? scene.power : null;
+  if (power && power.playerId === scene.selfId) {
+    return {
+      key: at('power'),
+      title: `✨ ${POWER_PROMPT[power.type]}`,
+      detail: 'Ou «Não usar»',
+      tone: 'gold',
+      drain: timer,
+    };
+  }
+  if (scene.phase === 'TURN_DECIDE' && input.canSwap) {
+    return input.drawnPower
+      ? {
+          key: at('decide-power'),
+          title: `✨ Carta com poder: ${POWER_TITLE[input.drawnPower]}`,
+          detail: '«Usar poder», «Descartar», ou toca ⇄ numa carta tua para trocar',
+          tone: 'gold',
+          drain: null,
+        }
+      : {
+          key: at('decide'),
+          title: 'Toca ⇄ numa carta tua para trocar',
+          detail: 'Ou descarta a carta tirada',
+          tone: 'plain',
+          drain: null,
+        };
+  }
+  return null;
 }
 
 /** Rules of the room, and the last round after a "Gringo" (UI §7). */
@@ -725,7 +840,9 @@ function statusMessage(
           : `${name} vai ${POWER_LABEL[power.type]}…`;
       }
       if (power.step === 'PEEKED') {
-        return power.type === 'PEEK_AND_SWAP' ? 'Trocas por uma tua? Toca nela, ou não troques' : 'Memoriza!';
+        return power.type === 'PEEK_AND_SWAP'
+          ? 'Trocas por uma tua? Toca nela, ou não troques'
+          : 'Memoriza a carta!';
       }
       return POWER_PROMPT[power.type];
     }

@@ -293,7 +293,6 @@ export function BlackjackTableView({
         onClose={() => setSessionOpen(false)}
         rows={scene.session}
         rounds={scene.roundsDealt}
-        startingStack={scene.rules.startingStack}
         nameOf={nameOf}
         selfId={selfId}
       />

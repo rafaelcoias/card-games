@@ -73,7 +73,20 @@ export interface SetupOptions {
    * these seats while others come and go; MATCH games may ignore them.
    */
   readonly seats?: readonly number[];
+  /** Games played with the account's chips: what each player brings to the table. */
+  readonly wallets?: Readonly<Record<PlayerId, number>>;
 }
+
+/**
+ * The chips of an account, for games played with them (Blackjack): virtual,
+ * without any value, kept from one table to the next.
+ */
+export const WALLET = {
+  /** What every account starts with. */
+  start: 5000,
+  /** What a player who ran out may buy back, as many times as they need. */
+  rebuy: 500,
+} as const;
 
 /**
  * `MATCH`: the players who start are the players who finish.
@@ -85,18 +98,27 @@ export type Lifecycle = 'MATCH' | 'SESSION';
 
 /** System actions the server applies (as `SYSTEM_PLAYER_ID`) to SESSION games. */
 export type SessionAction =
-  /** Someone took a free seat mid-session (or came back to the seat they were leaving). */
-  | { readonly type: 'SYS_PLAYER_JOINED'; readonly playerId: PlayerId; readonly seatIndex: number }
+  /**
+   * Someone took a free seat mid-session (or came back to the seat they were
+   * leaving), with the chips of their account in games played with them.
+   */
+  | {
+      readonly type: 'SYS_PLAYER_JOINED';
+      readonly playerId: PlayerId;
+      readonly seatIndex: number;
+      readonly wallet?: number;
+    }
   /** Someone left the room: they give up their seat, at the latest when the current round ends. */
   | { readonly type: 'SYS_PLAYER_LEFT'; readonly playerId: PlayerId }
   /** The host (or the last player leaving) ends the session. */
   | { readonly type: 'SYS_END_SESSION' };
 
 export const sessionActions = {
-  joined: (playerId: PlayerId, seatIndex: number): SessionAction => ({
+  joined: (playerId: PlayerId, seatIndex: number, wallet?: number): SessionAction => ({
     type: 'SYS_PLAYER_JOINED',
     playerId,
     seatIndex,
+    ...(wallet === undefined ? {} : { wallet }),
   }),
   left: (playerId: PlayerId): SessionAction => ({ type: 'SYS_PLAYER_LEFT', playerId }),
   end: (): SessionAction => ({ type: 'SYS_END_SESSION' }),
@@ -159,6 +181,13 @@ export interface GameModule<State, Action, Config, View = unknown, Event extends
   getTimeoutAction?(state: State): Action | null;
   /** SESSION games (required there): who holds a seat right now. */
   getSeatedPlayers?(state: State): PlayerId[];
+  /**
+   * Games played with the account's chips (see `WALLET`): what each player
+   * who sat down holds now, chips in play included. The server keeps the
+   * accounts in step with it, and brings each account's chips to `setup` and
+   * `SYS_PLAYER_JOINED`.
+   */
+  getWallets?(state: State): Readonly<Record<PlayerId, number>>;
   isFinished(state: State): boolean;
   getResult(state: State): GameResult;
 }

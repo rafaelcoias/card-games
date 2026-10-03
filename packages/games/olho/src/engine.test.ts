@@ -221,18 +221,20 @@ describe('skips (07 §3)', () => {
     expect(closed.events.at(-1)).toMatchObject({ type: 'TrickClosed', winnerId: 'b' });
   });
 
-  it('lets a target escape with a 2 that does not end their hand, the option off', () => {
-    const t = Table.scripted([{ a: ['3C', '2S', '9S'], b: ['2H', '2D', '4H'], c: ['2C', '6D', '5S'] }], {
-      ...noPowerBan,
-      allowFinishWithPower: false,
-    });
+  it('never skips on 2s: a 2 cannot answer a 2, only more 2s or a joker', () => {
+    const t = Table.scripted(
+      [{ a: ['3C', '2S', '9S'], b: ['2H', '2D', '4H'], c: ['2C', '6D', '5S'] }],
+      noPowerBan,
+    );
     t.play('a', '3C');
     t.play('b', '4H');
     t.play('c', '5S');
     t.play('a', '2S');
-    // Bruno's 2 equals Ana's: Carla holds a 2 but has two cards, so she may escape.
-    const pending = t.play('b', '2H');
-    expect(pending.events.at(-1)).toMatchObject({ type: 'SkipPending', targetId: 'c' });
+    expectError(t.try({ type: 'PLAY', cardIds: ['2H'] }, 'b'), 'NOT_ENOUGH_TWOS');
+    const beaten = t.play('b', '2H', '2D');
+    expect(eventTypes(beaten.events)).not.toContain('SkipPending');
+    expect(eventTypes(beaten.events)).not.toContain('Skipped');
+    expect(t.current).toBe('c');
   });
 });
 

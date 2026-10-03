@@ -1,6 +1,7 @@
 'use client';
 
 import type { SessionRow } from '@cardroom/blackjack';
+import { WALLET } from '@cardroom/game-core';
 import clsx from 'clsx';
 import { AnimatePresence, motion } from 'motion/react';
 import { signed } from '../score';
@@ -14,7 +15,6 @@ export function SessionPanel({
   onClose,
   rows,
   rounds,
-  startingStack,
   nameOf,
   selfId,
 }: {
@@ -22,7 +22,6 @@ export function SessionPanel({
   onClose: () => void;
   rows: SessionRow[];
   rounds: number;
-  startingStack: number;
   nameOf: (id: string) => string;
   selfId: string;
 }) {
@@ -50,8 +49,8 @@ export function SessionPanel({
               </button>
             </div>
             <p className="mt-1 text-xs text-muted">
-              {rounds} {rounds === 1 ? 'ronda jogada' : 'rondas jogadas'} · cada um começou com{' '}
-              {startingStack} fichas, e cada recompra conta no saldo. Fichas sem valor real.
+              {rounds} {rounds === 1 ? 'ronda jogada' : 'rondas jogadas'} · cada um joga com as fichas da sua
+              conta; o saldo desconta as recompras ({WALLET.rebuy} cada). Fichas sem valor real.
             </p>
             <div className="mt-3 min-h-0 flex-1 overflow-auto">
               <table className="w-full text-sm">

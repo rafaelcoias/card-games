@@ -25,7 +25,7 @@ export const gringoConfigSchema = z.object({
   decks: z.union([z.literal('AUTO'), z.literal(1), z.literal(2)]).default('AUTO'),
   initialPeekMs: z.number().int().min(3_000).max(30_000).default(10_000),
   turnTimeoutMs: z.number().int().min(10_000).max(120_000).default(30_000),
-  powerTimeoutMs: z.number().int().min(5_000).max(60_000).default(15_000),
+  powerTimeoutMs: z.number().int().min(5_000).max(60_000).default(20_000),
 }) satisfies z.ZodType<GringoConfig>;
 
 const yesNo = [
@@ -97,6 +97,7 @@ export const gringoActionSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('SWAP_DRAWN'), index }),
   z.strictObject({ type: z.literal('DISCARD_DRAWN'), usePower: z.boolean() }),
   z.strictObject({ type: z.literal('POWER_PEEK'), owner: playerId, index }),
+  z.strictObject({ type: z.literal('POWER_PEEK_DONE') }),
   z.strictObject({ type: z.literal('POWER_BLIND_SWAP'), myIndex: index, owner: playerId, theirIndex: index }),
   z.strictObject({ type: z.literal('POWER_SWAP_DECISION'), swap: z.boolean(), myIndex: index.optional() }),
   z.strictObject({ type: z.literal('POWER_SKIP') }),

@@ -76,6 +76,11 @@ export interface SnapResult {
 export interface SnapWindow {
   /** Every snap names the discard it is about, so a late one never lands on a newer card. */
   discardId: number;
+  /**
+   * How long the table shows the move that opened it (two cards trading places)
+   * before anyone can react: the window lasts this much longer.
+   */
+  leadMs: number;
   /** Someone snapped: nobody else may (rules §7). */
   result: SnapResult | null;
 }
@@ -124,6 +129,8 @@ export type GringoClientAction =
   | { type: 'DISCARD_DRAWN'; usePower: boolean }
   /** Looks at a slot: another player's (10 / king) or one's own (queen). */
   | { type: 'POWER_PEEK'; owner: PlayerId; index: number }
+  /** "Já memorizei": the card looked at with a 10 or a queen turns back before its time. */
+  | { type: 'POWER_PEEK_DONE' }
   /** Jack: one's own slot with another player's, unseen. */
   | { type: 'POWER_BLIND_SWAP'; myIndex: number; owner: PlayerId; theirIndex: number }
   /** King, after looking: swap the card seen with one's own `myIndex`, or leave it. */

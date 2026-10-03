@@ -124,10 +124,11 @@ describe('checking a play (contract §5.1)', () => {
     expect(check(on(1, 'A'), '2S')).toBeNull();
   });
 
-  it('on 2s takes only as many 2s or more', () => {
+  it('on 2s takes only more 2s: a 2 never answers a 2', () => {
     expect(check(on(1, '2'), '2S', '2H')).toBeNull();
-    expect(check(on(1, '2'), '2S')).toBeNull();
+    expect(check(on(1, '2'), '2S')).toBe('NOT_ENOUGH_TWOS');
     expect(check(on(2, '2'), '2S', '2H', '2D')).toBeNull();
+    expect(check(on(2, '2'), '2S', '2H')).toBe('NOT_ENOUGH_TWOS');
     expect(check(on(1, '2'), '2S', '2H', '2D')).toBeNull();
     expect(check(on(2, '2'), '2S')).toBe('NOT_ENOUGH_TWOS');
     expect(check(on(1, '2'), 'AS')).toBe('TOO_LOW');

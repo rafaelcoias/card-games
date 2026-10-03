@@ -46,14 +46,14 @@ async function takeTurn(page: Page, turn: number): Promise<boolean> {
       return true;
     }
   }
-  for (const name of ['Tirar carta', 'Passar', 'Não trocar']) {
+  for (const name of ['Tirar carta', 'Passar', 'Não trocar', 'Já memorizei']) {
     if (await visible(page, name)) {
       await page.getByRole('button', { name, exact: true }).click();
       return true;
     }
   }
   if (await visible(page, 'Descartar')) {
-    const power = page.getByRole('button', { name: /^✨ Descartar e / });
+    const power = page.getByRole('button', { name: /Usar poder$/ });
     if ((await power.isVisible().catch(() => false)) && Math.random() < 0.8) await power.click();
     else if (Math.random() < 0.35) await tapRandom(page, /^A tua carta \[\d+\]$/);
     else await page.getByRole('button', { name: 'Descartar', exact: true }).click();
@@ -87,8 +87,9 @@ test('four browsers play Gringo to the end; a reload mid-game loses nothing', as
   await host.getByRole('button', { name: 'Criar sala' }).first().click();
   const dialog = host.getByRole('dialog');
   await dialog.getByText('Gringo', { exact: true }).click();
+  await dialog.getByRole('button', { name: 'Personalizar' }).click();
   await dialog.getByText('4', { exact: true }).first().click();
-  await dialog.getByRole('group', { name: 'Dizer "Gringo"' }).getByText('Sim', { exact: true }).click();
+  await dialog.getByRole('radiogroup', { name: 'Dizer "Gringo"' }).getByText('Sim', { exact: true }).click();
   await dialog.getByText('1 volta', { exact: true }).click();
   await dialog.getByText('2s', { exact: true }).click();
   await dialog.getByRole('button', { name: 'Criar sala' }).click();

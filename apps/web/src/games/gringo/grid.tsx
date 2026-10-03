@@ -7,14 +7,31 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { memo, type KeyboardEvent } from 'react';
 import { points } from './copy';
 import { gridBox, slotCell, slotGap } from './layout';
-import { ANCHORS, cardLayoutId, dealDelaySeconds, type Scene, type SeatScene } from './scene';
+import {
+  ANCHORS,
+  SLOT_GLIDE_SECONDS,
+  cardLayoutId,
+  dealDelaySeconds,
+  type Scene,
+  type SeatScene,
+} from './scene';
 
 /**
- * How a slot reacts: `target` glows and takes a tap (a choice to make),
- * `selected` is the first half of a two-tap choice (a jack's swap), `armed`
- * waits for the second tap that confirms a snap (UI §6).
+ * How a slot reacts to a tap. The choices glow and say what the tap does:
+ * `swap` puts the drawn card there (or, after a king's peek, takes the card
+ * seen), `peek` looks at it, `pick` chooses it for a jack's swap, `snap`
+ * arms a snap. `selected` is the first half of a jack's swap; `armed` waits
+ * for the second tap that confirms a snap (UI §6).
  */
-export type SlotMode = 'none' | 'target' | 'selected' | 'armed';
+export type SlotMode = 'none' | 'swap' | 'peek' | 'pick' | 'snap' | 'selected' | 'armed';
+
+/** What a tap on a glowing slot will do, as a badge on its corner. */
+const INTENT: Partial<Record<SlotMode, { icon: string; tone: string }>> = {
+  swap: { icon: '⇄', tone: 'bg-gold text-gold-ink' },
+  pick: { icon: '⇄', tone: 'bg-gold text-gold-ink' },
+  peek: { icon: '👁', tone: 'bg-ink text-ivory ring-1 ring-gold/70' },
+  snap: { icon: '✋', tone: 'bg-danger text-white' },
+};
 
 export interface GridProps {
   seat: SeatScene;
@@ -35,6 +52,8 @@ export interface GridProps {
   redKingValue?: -3 | -1 | null;
   /** The slot of a snap just made: green or red outline. */
   flash?: { index: number; hit: boolean } | null;
+  /** Slots whose card just changed (a swap): outlined until the next turn. */
+  moved?: ReadonlySet<number>;
 }
 
 /**
@@ -54,6 +73,7 @@ export const Grid = memo(function Grid({
   watched = null,
   redKingValue = null,
   flash = null,
+  moved,
 }: GridProps) {
   const reduced = useReducedMotion() ?? false;
   const width = CARD_WIDTH[size];
@@ -82,6 +102,8 @@ export const Grid = memo(function Grid({
         const mode = modeOf?.(slot.index) ?? 'none';
         const interactive = mode !== 'none' && slot.token !== null;
         const lifted = raised?.has(slot.index) ?? false;
+        const intent = slot.token ? INTENT[mode] : undefined;
+        const changed = slot.token !== null && (moved?.has(slot.index) ?? false);
         const value = redKingValue !== null && slot.face ? cardPoints(slot.face, redKingValue) : null;
         return (
           <div
@@ -108,12 +130,21 @@ export const Grid = memo(function Grid({
                 </span>
               )}
             </div>
+            {changed && mode === 'none' && (
+              <motion.span
+                aria-hidden="true"
+                className="pointer-events-none absolute -inset-1 rounded-[calc(var(--radius-card)+4px)] ring-2 ring-sky-300/90 shadow-[0_0_16px_rgb(125_211_252/0.55)]"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              />
+            )}
             {mode !== 'none' && slot.token && (
               <span
                 aria-hidden="true"
                 className={clsx(
                   'pointer-events-none absolute -inset-1 rounded-[calc(var(--radius-card)+4px)] ring-2',
-                  mode === 'target' && 'animate-pulse ring-gold/80',
+                  intent && 'animate-pulse',
+                  mode === 'snap' ? 'ring-danger/80' : intent && 'ring-gold/80',
                   mode === 'selected' && 'ring-gold shadow-[0_0_18px_rgb(232_193_112/0.6)]',
                   mode === 'armed' && 'ring-danger shadow-[0_0_20px_rgb(240_104_107/0.7)]',
                 )}
@@ -126,6 +157,7 @@ export const Grid = memo(function Grid({
                 faceDown={deal !== null || !slot.face}
                 size={size}
                 layoutId={cardLayoutId(slot.token)}
+                glide={SLOT_GLIDE_SECONDS}
                 enter={
                   deal
                     ? { from: ANCHORS.deck, kind: 'deal', delay: dealDelaySeconds(deal, seat.id, slot.index) }
@@ -150,6 +182,28 @@ export const Grid = memo(function Grid({
             >
               {slot.index + 1}
             </span>
+            {(intent || changed) && (
+              <span
+                aria-hidden="true"
+                className={clsx(
+                  'pointer-events-none absolute z-[3] flex items-center justify-center rounded-full font-bold leading-none shadow-lg',
+                  small ? '-left-1 -top-1.5 size-4 text-[9px]' : '-left-1.5 -top-2 size-6 text-xs',
+                  intent ? intent.tone : 'bg-sky-300 text-ink',
+                )}
+              >
+                {intent ? intent.icon : '⇄'}
+              </span>
+            )}
+            {mode === 'armed' && (
+              <motion.span
+                aria-hidden="true"
+                className="pointer-events-none absolute -top-9 left-1/2 z-[4] -translate-x-1/2 whitespace-nowrap rounded-full bg-danger px-2 py-0.5 text-[11px] font-black uppercase tracking-wide text-white shadow-lg"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                Bater?
+              </motion.span>
+            )}
             <AnimatePresence>
               {watched === slot.index && (
                 <motion.span

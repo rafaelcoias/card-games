@@ -5,7 +5,9 @@ import clsx from 'clsx';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Avatar } from '@/components/ui/avatar';
+import { RoomSettingsDialog } from '@/components/lobby/room-settings-dialog';
 import { Button } from '@/components/ui/button';
+import { useDialog } from '@/components/ui/modal';
 import { findGameClient } from '@/games/registry';
 import { formatScore } from '@/games/score';
 import type { GameClientDefinition } from '@/games/types';
@@ -22,6 +24,7 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
   const router = useRouter();
   const commands = useRoomCommands();
   const [busy, setBusy] = useState<string | null>(null);
+  const settings = useDialog();
   const game = findGameClient(room.gameId);
   const isHost = room.hostId === selfId;
   const me = room.players.find((p) => p.id === selfId);
@@ -56,14 +59,21 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
   );
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[1fr_360px]">
+    <div className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)] gap-6 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.14em] text-subtle">
               {room.isPrivate ? 'Sala privada' : 'Sala pública'}
             </p>
-            <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight">{room.gameName}</h1>
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <h1 className="font-display text-4xl font-semibold tracking-tight">{room.gameName}</h1>
+              {isHost && (
+                <Button size="sm" variant="secondary" onClick={settings.show}>
+                  Mudar jogo
+                </Button>
+              )}
+            </div>
             <SettingsSummary room={room} game={game} />
           </div>
           <div className="flex items-center gap-2">
@@ -161,6 +171,10 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
       </div>
 
       <ChatPanel className="h-[420px] lg:h-[calc(100dvh-10rem)] lg:max-h-[640px]" />
+
+      {isHost && (
+        <RoomSettingsDialog key={settings.key} open={settings.open} onClose={settings.hide} room={room} />
+      )}
     </div>
   );
 }

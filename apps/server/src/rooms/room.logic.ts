@@ -65,25 +65,13 @@ export function markPresent(member: RoomMember): void {
   member.disconnectedAt = null;
 }
 
-/** Hands the host role to the next present member after `fromSeat`, wrapping around. */
-function transferHostIfNeeded(room: RoomRecord, fromSeat: number): void {
-  if (room.members.some((m) => m.id === room.hostId && !m.left)) return;
-  const candidates = room.members.filter((m) => !m.left);
-  const next = candidates.find((m) => m.seat > fromSeat) ?? candidates[0];
-  if (next) room.hostId = next.id;
-}
-
-function hostSeat(room: RoomRecord): number {
-  return findMember(room, room.hostId)?.seat ?? -1;
-}
-
 /**
  * Removes a member. During a match the seat is kept (flagged `left` + `away`)
  * so the engine can keep playing default actions for them until it ends.
+ * The host role never passes on: a room whose host is gone closes.
  */
 export function removeMember(room: RoomRecord, userId: string): void {
   const member = requireMember(room, userId);
-  const seat = hostSeat(room);
   if (room.session?.players.includes(userId)) {
     member.left = true;
     member.away = true;
@@ -93,7 +81,6 @@ export function removeMember(room: RoomRecord, userId: string): void {
   } else {
     room.members = room.members.filter((m) => m.id !== userId);
   }
-  transferHostIfNeeded(room, seat);
 }
 
 /**
@@ -101,11 +88,57 @@ export function removeMember(room: RoomRecord, userId: string): void {
  * leaver's seat when the round in play ends). Returns whether anyone went.
  */
 export function purgeLeftMembers(room: RoomRecord, stillSeated: readonly string[] = []): boolean {
-  const seat = hostSeat(room);
   const before = room.members.length;
   room.members = room.members.filter((m) => !m.left || stillSeated.includes(m.id));
-  transferHostIfNeeded(room, seat);
   return room.members.length !== before;
+}
+
+/** The host left, or stayed disconnected past their grace period: the room is theirs, so it closes. */
+export function hostGone(room: RoomRecord): boolean {
+  const host = findMember(room, room.hostId);
+  return !host || host.left || host.away;
+}
+
+/**
+ * A rematch: once everyone at the table, host included, says they want to
+ * play again (is ready), the next match starts by itself.
+ */
+export function startsByItself(room: RoomRecord, minPlayers: number, maxPlayers: number): boolean {
+  const count = room.members.length;
+  return (
+    room.status === 'OPEN' &&
+    count >= minPlayers &&
+    count <= maxPlayers &&
+    room.members.every((m) => m.ready && m.connected)
+  );
+}
+
+export function assertCanConfigure(room: RoomRecord, userId: string, maxPlayers: number): void {
+  requireHost(room, userId);
+  if (room.status !== 'OPEN') {
+    throw new AppError(ErrorCode.RoomInProgress, 'The game can only change between matches');
+  }
+  if (room.members.length > maxPlayers) {
+    throw new AppError(ErrorCode.PlayerCount, `There are already ${room.members.length} players here`);
+  }
+}
+
+/**
+ * Another game, or other rules, for the same players: like a new room. A new
+ * game starts a new sequence (no previous result decides who starts), seats
+ * close up so they fit the new table, and everyone confirms again.
+ */
+export function applySettings(
+  room: RoomRecord,
+  settings: Pick<RoomRecord, 'gameId' | 'lifecycle' | 'isPrivate' | 'maxPlayers' | 'config'>,
+): void {
+  if (settings.gameId !== room.gameId) room.lastResult = null;
+  Object.assign(room, settings);
+  room.members.sort((a, b) => a.seat - b.seat);
+  room.members.forEach((member, seat) => {
+    member.seat = seat;
+    member.ready = false;
+  });
 }
 
 export function isEmpty(room: RoomRecord): boolean {

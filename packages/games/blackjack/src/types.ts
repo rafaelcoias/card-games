@@ -18,7 +18,6 @@ export interface BlackjackConfig {
   decks: number;
   /** Share of the shoe dealt before the cut card comes out. */
   penetration: number;
-  startingStack: Chips;
   minBet: Chips;
   maxBet: Chips;
   /** `false` = the dealer stands on soft 17 (S17). */
@@ -35,7 +34,6 @@ export interface BlackjackConfig {
   /** Late surrender, as the first decision of the original hand. */
   surrender: boolean;
   insurance: boolean;
-  allowRebuy: boolean;
   /** Basic-strategy hint button (only for the rules the table was computed for). */
   hintsEnabled: boolean;
   betTimeoutMs: number;
@@ -79,6 +77,8 @@ export interface Seat {
   seatIndex: number;
   playerId: PlayerId;
   stack: Chips;
+  /** Chips brought from the account to this table (net = stack − buyIn − rebuys). */
+  buyIn: Chips;
   rebuys: number;
   /** Bet placed for the next deal (already taken from the stack). */
   bet: Chips | null;
@@ -99,6 +99,7 @@ export interface Seat {
 export interface DepartedPlayer {
   playerId: PlayerId;
   stack: Chips;
+  buyIn: Chips;
   rebuys: number;
   roundsPlayed: number;
 }

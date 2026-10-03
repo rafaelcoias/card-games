@@ -20,7 +20,7 @@ function phaseActions(state: BlackjackState, seat: Seat): BlackjackClientAction[
     if (seat.bet !== null) return [{ type: 'CLEAR_BET' }];
     if (seat.sittingOut) return [];
     if (seat.stack >= config.minBet) return [{ type: 'PLACE_BET', amount: config.minBet }];
-    return config.allowRebuy ? [{ type: 'REBUY' }] : [];
+    return [{ type: 'REBUY' }];
   }
   if (state.phase === 'INSURANCE' && seat.insurance?.decision === 'PENDING') {
     const type = seat.insurance.evenMoney ? 'EVEN_MONEY' : 'INSURANCE';

@@ -18,6 +18,9 @@ export const roomCreateSchema = z.strictObject({
   config: z.record(z.string(), z.unknown()).default({}),
 });
 
+/** Changing a room's game or rules between matches takes the same fields as creating it. */
+export const roomConfigureSchema = roomCreateSchema;
+
 export const roomJoinSchema = z.strictObject({ code: roomCodeSchema });
 export const roomReadySchema = z.strictObject({ ready: z.boolean() });
 export const roomKickSchema = z.strictObject({ playerId: z.string().min(1).max(64) });
@@ -59,6 +62,7 @@ export const updateProfileSchema = z.strictObject({
 });
 
 export type RoomCreatePayload = z.input<typeof roomCreateSchema>;
+export type RoomConfigurePayload = z.input<typeof roomConfigureSchema>;
 export type RoomJoinPayload = z.input<typeof roomJoinSchema>;
 export type RoomReadyPayload = z.input<typeof roomReadySchema>;
 export type RoomKickPayload = z.input<typeof roomKickSchema>;

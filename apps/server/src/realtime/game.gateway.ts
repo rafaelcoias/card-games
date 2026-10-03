@@ -14,6 +14,7 @@ import {
   ErrorCode,
   gameActionSchema,
   roomChatSchema,
+  roomConfigureSchema,
   roomCreateSchema,
   roomJoinSchema,
   roomKickSchema,
@@ -123,6 +124,13 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   @SubscribeMessage(ClientEvent.RoomCreate)
   createRoom(@ConnectedSocket() socket: GameSocket, @MessageBody() body: unknown): Promise<Ack<JoinedRoom>> {
     return this.handle(socket, () => this.rooms.create(socket.data.profile, roomCreateSchema.parse(body)));
+  }
+
+  @SubscribeMessage(ClientEvent.RoomConfigure)
+  configureRoom(@ConnectedSocket() socket: GameSocket, @MessageBody() body: unknown): Promise<Ack<void>> {
+    return this.handle(socket, () =>
+      this.rooms.configure(socket.data.profile.id, roomConfigureSchema.parse(body)),
+    );
   }
 
   @SubscribeMessage(ClientEvent.RoomJoin)

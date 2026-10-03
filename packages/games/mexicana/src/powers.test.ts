@@ -153,6 +153,30 @@ describe('8 — skip', () => {
     expect(current(expectOk(play(state, 'p1', '8H')).state)).toBe('p1');
   });
 
+  it('never skips the player who played: two 8s at once with two players skip the other twice', () => {
+    const state = buildState({ players: { p1: { hand: ['8H', '8D', '9C'] }, p2: { hand: ['4C'] } } });
+    const { state: next, events } = expectOk(play(state, 'p1', '8H', '8D'));
+    expect(
+      events.filter((e) => e.type === 'PlayerSkipped').map((e) => e.type === 'PlayerSkipped' && e.playerId),
+    ).toEqual(['p2', 'p2']);
+    expect(current(next)).toBe('p1');
+  });
+
+  it('cycles over the others only: three 8s at a table of three skip p2, p3, p2', () => {
+    const state = buildState({
+      players: {
+        p1: { hand: ['8H', '8D', '8S', '9C'] },
+        p2: { hand: ['4C'] },
+        p3: { hand: ['6C'] },
+      },
+    });
+    const { state: next, events } = expectOk(play(state, 'p1', '8H', '8D', '8S'));
+    expect(
+      events.filter((e) => e.type === 'PlayerSkipped').map((e) => e.type === 'PlayerSkipped' && e.playerId),
+    ).toEqual(['p2', 'p3', 'p2']);
+    expect(current(next)).toBe('p3');
+  });
+
   it('requires 8 or higher afterwards', () => {
     const state = expectOk(play(table(['8H']), 'p1', '8H')).state;
     expectError(play(state, 'p3', '6C'), 'ILLEGAL_PLAY');

@@ -43,6 +43,7 @@ const toProfileDto = (profile: ProfileRecord): ProfileDto => ({
   guest: profile.guest,
   createdAt: profile.createdAt.toISOString(),
   stats: profile.stats,
+  chips: profile.chips,
 });
 
 function toHistoryEntry(row: MatchHistoryRow, registry: GameRegistry): MatchHistoryEntry {
@@ -155,6 +156,7 @@ export class PlayersController {
       username: p.username,
       avatarUrl: p.avatarUrl,
       stats: p.stats,
+      chips: p.chips,
       online: online.has(p.id),
     }));
   }
@@ -173,6 +175,7 @@ export class PlayersController {
       avatarUrl: profile.avatarUrl,
       createdAt: profile.createdAt.toISOString(),
       stats: profile.stats,
+      chips: profile.chips,
       online: presence !== null,
       presence,
       recentMatches: rows.map((row) => toHistoryEntry(row, this.registry)),

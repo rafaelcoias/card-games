@@ -4,12 +4,16 @@ import {
   acceptsPlayers,
   addMember,
   appendChat,
+  applySettings,
+  assertCanConfigure,
   assertCanKick,
   assertCanStart,
+  hostGone,
   isEmpty,
   markPresent,
   purgeLeftMembers,
   removeMember,
+  startsByItself,
   toRoomState,
   upgradeRoom,
 } from './room.logic';
@@ -111,15 +115,25 @@ describe('room membership', () => {
     expect(purgeLeftMembers(r, ['a', 'b'])).toBe(false);
   });
 
-  it('passes the host role to the next player in seat order', () => {
+  it('never passes the host role on: a room whose host is gone is to be closed', () => {
     const r = withMembers('a', 'b', 'c');
-    r.hostId = 'b';
-    removeMember(r, 'b');
-    expect(r.hostId).toBe('c');
-    removeMember(r, 'c');
-    expect(r.hostId).toBe('a');
+    expect(hostGone(r)).toBe(false);
     removeMember(r, 'a');
+    expect(r.hostId).toBe('a');
+    expect(hostGone(r)).toBe(true);
+    removeMember(r, 'b');
+    removeMember(r, 'c');
     expect(isEmpty(r)).toBe(true);
+  });
+
+  it('counts a host who stayed away past their grace period as gone, until they return', () => {
+    const r = withMembers('a', 'b');
+    r.status = 'PLAYING';
+    r.session = session(['a', 'b']);
+    Object.assign(r.members[0]!, { connected: false, away: true });
+    expect(hostGone(r)).toBe(true);
+    markPresent(r.members[0]!);
+    expect(hostGone(r)).toBe(false);
   });
 
   it('keeps a leaver seated as away while a match runs, then purges them', () => {
@@ -134,7 +148,7 @@ describe('room membership', () => {
       connected: false,
       voice: false,
     });
-    expect(r.hostId).toBe('b');
+    expect(hostGone(r)).toBe(true);
     purgeLeftMembers(r);
     expect(r.members.map((m) => m.id)).toEqual(['b', 'c']);
   });
@@ -164,6 +178,58 @@ describe('starting', () => {
     expectCode(() => assertCanStart(r, 'a', 2, 6), 'NOT_READY');
     r.status = 'PLAYING';
     expectCode(() => assertCanStart(r, 'a', 2, 6), 'ROOM_IN_PROGRESS');
+  });
+
+  it('starts a rematch by itself once everyone, host included, wants to play again', () => {
+    const r = withMembers('a', 'b', 'c');
+    r.members[1]!.ready = true;
+    r.members[2]!.ready = true;
+    expect(startsByItself(r, 2, 6)).toBe(false); // the host has not said it yet
+    r.members[0]!.ready = true;
+    expect(startsByItself(r, 2, 6)).toBe(true);
+    expect(startsByItself(r, 4, 6)).toBe(false);
+    r.members[2]!.connected = false;
+    expect(startsByItself(r, 2, 6)).toBe(false);
+  });
+});
+
+describe('changing the game', () => {
+  const blackjack = {
+    gameId: 'blackjack',
+    lifecycle: 'SESSION' as const,
+    isPrivate: true,
+    maxPlayers: 3,
+    config: { decks: 6 },
+  };
+
+  it('is for the host, between matches, and must still seat everyone', () => {
+    const r = withMembers('a', 'b', 'c');
+    expectCode(() => assertCanConfigure(r, 'b', 4), 'NOT_HOST');
+    expectCode(() => assertCanConfigure(r, 'a', 2), 'PLAYER_COUNT');
+    expect(() => assertCanConfigure(r, 'a', 3)).not.toThrow();
+    r.status = 'PLAYING';
+    expectCode(() => assertCanConfigure(r, 'a', 4), 'ROOM_IN_PROGRESS');
+  });
+
+  it('starts a new sequence with another game, closes up the seats and asks everyone again', () => {
+    const r = withMembers('a', 'b', 'c', 'd');
+    removeMember(r, 'b');
+    r.members.forEach((m) => (m.ready = true));
+    r.lastResult = { matchId: 'm', aborted: false, standings: [] };
+    applySettings(r, blackjack);
+    expect(r).toMatchObject({ ...blackjack, lastResult: null });
+    expect(r.members.map((m) => [m.id, m.seat, m.ready])).toEqual([
+      ['a', 0, false],
+      ['c', 1, false],
+      ['d', 2, false],
+    ]);
+  });
+
+  it('keeps the sequence when only the rules of the same game change', () => {
+    const r = withMembers('a', 'b');
+    r.lastResult = { matchId: 'm', aborted: false, standings: [] };
+    applySettings(r, { ...blackjack, gameId: 'mexicana', lifecycle: 'MATCH' });
+    expect(r.lastResult).not.toBeNull();
   });
 });
 

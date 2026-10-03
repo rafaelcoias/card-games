@@ -104,6 +104,21 @@ describe('guest profiles', () => {
   });
 });
 
+describe('account chips', () => {
+  it('start at 5000 and follow what the tables write', async () => {
+    const [a, b] = [randomUUID(), randomUUID()];
+    await profiles.upsert(a, { username: unique('chips'), avatarUrl: null });
+    await profiles.upsertGuest(b, { username: unique('guest'), avatarUrl: null });
+    expect(await profiles.wallets([a, b])).toEqual({ [a]: 5000, [b]: 5000 });
+    expect((await profiles.find(a))?.chips).toBe(5000);
+
+    await profiles.setWallets({ [a]: 4210, [b]: 500 });
+    expect(await profiles.wallets([a, b])).toEqual({ [a]: 4210, [b]: 500 });
+    expect((await profiles.find(b))?.chips).toBe(500);
+    expect(await profiles.wallets([])).toEqual({});
+  });
+});
+
 describe('player directory', () => {
   it('finds players by case-insensitive username prefix and by activity', async () => {
     const tag = randomUUID().slice(0, 6);

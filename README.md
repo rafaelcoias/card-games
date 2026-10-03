@@ -95,7 +95,7 @@ token traz `firebase.sign_in_provider = "anonymous"` e é daí que web e servido
 
 | Coleção | Conteúdo |
 |---|---|
-| `profiles/{uid}` | nome de utilizador, avatar, data de criação, `guest` |
+| `profiles/{uid}` | nome de utilizador, avatar, data de criação, `guest`, `chips` (fichas do Blackjack) |
 | `profiles/{uid}/history/{matchId}` | resumo de cada partida do jogador (escrito no fim da partida) |
 | `usernames/{nome}` | índice de unicidade (transação, sem distinguir maiúsculas) |
 | `rooms/{roomId}` | código, jogo, anfitrião, estado |
@@ -115,6 +115,22 @@ SDK, lê e escreve.
 - **Uma ligação por jogador:** uma ligação nova substitui a anterior.
 - **Reconexão:** durante o período de graça (60 s) o lugar fica guardado e o jogador recebe um snapshot. Depois
   disso fica *ausente*, e o servidor joga por ele a ação por omissão.
+
+### Salas
+
+- **Nova sala.** Uma grelha só com os nomes dos jogos (duas colunas no telemóvel, onde o diálogo ocupa o ecrã
+  todo) e uma linha sobre o escolhido. A sala é **pública por omissão**; as regras são as do jogo, a não ser que
+  o anfitrião abra "Personalizar". As opções são botões `role="radio"` (sem inputs escondidos, que faziam o
+  diálogo saltar ao toque) e, com um diálogo aberto, só ele faz scroll.
+- **Jogar outra vez.** Nos resultados, "Jogar outra vez" marca o jogador como pronto e mostra a todos quem já
+  quer. Quando toda a mesa (anfitrião incluído) quer, a partida seguinte começa sozinha, sem voltar à sala.
+- **Mudar o jogo.** Entre partidas, o anfitrião muda o jogo, as regras, a visibilidade ou o número de lugares
+  (`room:configure`) para os mesmos jogadores. Outro jogo recomeça a sequência da mesa (`lastResult` limpo: quem
+  começa, cargos, continuidade) — o diálogo avisa antes —, os lugares encostam-se e todos confirmam de novo.
+- **A sala é do anfitrião.** O papel de anfitrião nunca passa: se ele sai, ou fica desligado para lá da graça,
+  a sala fecha para todos (`room:closed`) — no lobby logo, a meio de uma partida quando ela acaba (uma mesa
+  contínua termina no fim da ronda). Nenhuma sala dura mais de **12 horas** (job `expire` no agendador): fecha, ou
+  fecha no fim do jogo em curso. Uma sala fechada desaparece do Redis com o código e o chat.
 
 ## Desenvolvimento local
 
@@ -146,7 +162,7 @@ persistem em `.firebase-data/`.
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Qualidade (ESLint com tipos, TS strict, Prettier) |
 | `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana, do Peixinho, do Desconfia, do Olho e do Gringo e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
 | `pnpm --filter @cardroom/server test:int` | Repositórios Firestore contra o emulador |
-| `pnpm --filter @cardroom/server test:e2e` | Clientes Socket.IO jogam partidas completas (com reconexão; no Desconfia e no Gringo, com desconfianças/batidas simultâneas de que só uma conta) e sessões de Blackjack e de Olho onde se entra e sai a meio (`E2E_SERVER_URLS=url1,url2` reparte por 2 instâncias) |
+| `pnpm --filter @cardroom/server test:e2e` | Clientes Socket.IO jogam partidas completas (com reconexão; no Desconfia e no Gringo, com desconfianças/batidas simultâneas de que só uma conta) e sessões de Blackjack e de Olho onde se entra e sai a meio, e a vida de uma sala entre partidas (jogar outra vez, mudar o jogo, fechar quando o anfitrião sai) (`E2E_SERVER_URLS=url1,url2` reparte por 2 instâncias) |
 | `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe, partidas completas (incluindo o Peixinho a 3, e o Desconfia e o Gringo a 4, com um recarregar a meio) e sessões de Blackjack e de Olho pela UI |
 | `pnpm emulators` | Emuladores Firebase (Auth + Firestore) |
 | `pnpm firebase:deploy-rules` | Publica `firestore.rules` e os índices no projeto Firebase |
@@ -171,7 +187,8 @@ janela de bater, bateu, errou, troca às cegas, Gringo, revelação final, 10 jo
   - N treses sobre um 8 contam como N oitos.
   - Uma queima anula os saltos pendentes.
   - Quem sai do jogo com a carta que queima passa a vez.
-  - Os saltos contam jogadores em ciclo.
+  - Os saltos contam os outros jogadores em ciclo, nunca quem jogou: a dois, dois 8 de uma vez saltam o outro duas
+    vezes e quem os jogou volta a jogar (como se os jogasse um a um).
   - Na escolha automática das visíveis, o Joker vale como a carta mais alta.
   - Só com visíveis na mesa e nenhuma jogável, quem apanha a pilha leva também uma delas para a mão, à
     escolha (como uma escondida que falha); se o tempo acabar, vai a mais baixa. Com uma visível jogável não se
@@ -207,10 +224,16 @@ janela de bater, bateu, errou, troca às cegas, Gringo, revelação final, 10 jo
   um jogador a sua própria carta, e as cartas vão para a mesa sozinhas (700 ms entre cada uma).
 - **Blackjack.** Regras do `blackjack-kit/02` com as propostas por omissão de todos os pontos em aberto (`11`):
   6 baralhos, carta de corte a 75%, banca fica no 17 mole, carta americana (peek), 3:2, dobrar depois de separar,
-  até 4 mãos, J+Q separa, desistência tardia, seguro e even money, 1000 fichas por sessão com recompra, dica
-  desligada por omissão, temporizadores de 15/10/20 s. Tudo configurável ao criar a sala.
-  - **Fichas sem valor.** Não há compras, trocas, prémios nem carteira permanente; o resultado de uma sessão é o
-    saldo (fichas finais − compras) e conta como "jogada" nas estatísticas, nunca como vitória ou derrota.
+  até 4 mãos, J+Q separa, desistência tardia, seguro e even money, dica desligada por omissão, temporizadores de
+  15/10/20 s. Tudo configurável ao criar a sala.
+  - **Fichas da conta.** Cada conta (também a de um convidado) começa com **5000 fichas** (`WALLET` no
+    `game-core`) e senta-se à mesa com todas as que tem. Quem ficar sem fichas para a mínima pode recomprar
+    **500**, as vezes que precisar. O motor diz o que cada um tem (`getWallets`, fichas na mesa incluídas) e o
+    servidor escreve no perfil só o que mudou, a cada mão paga ou recompra: o perfil, que todos podem ver, está
+    sempre em dia. Quem volta a uma sessão traz as fichas que a conta tem agora (o que ganhou noutra mesa conta
+    como trazido, não como ganho ali).
+  - **Fichas sem valor.** Não há compras com dinheiro, trocas nem prémios; o resultado de uma sessão é o saldo
+    (fichas finais − trazidas − recompras) e conta como "jogada" nas estatísticas, nunca como vitória ou derrota.
   - **Ritmo.** A banca joga por ações de sistema agendadas, uma carta de cada vez (revelar 700 ms, cada carta
     750 ms, 900 ms para espreitar, 350 ms por mão paga, 2,5 s de resumo, 2,2 s a baralhar). A distribuição
     inicial é uma só ação: o cliente anima carta a carta (280 ms) e o motor só abre a fase seguinte depois disso
@@ -255,8 +278,8 @@ janela de bater, bateu, errou, troca às cegas, Gringo, revelação final, 10 jo
     10 000 partidas (bots ao calhas e bots de memória) verifica a conservação das 52 cartas em cada passo e que
     todas acabam (média de ~80–90 ações, máximo ~160). Bots que peçam sempre ao mesmo jogador podem andar em
     círculos com o lago vazio, mas o pedido automático do temporizador escolhe o alvo ao calhas.
-  - **Crianças** (`09` #7): as salas já são privadas por omissão. O chat reduzido a frases pré-definidas mexe
-    na plataforma (chat de todas as salas), por isso ficou de fora.
+  - **Crianças** (`09` #7): basta criar a sala como privada (é um toque, no diálogo). O chat reduzido a frases
+    pré-definidas mexe na plataforma (chat de todas as salas), por isso ficou de fora.
 - **Desconfia.** Regras do `desconfia-kit/02` com as propostas por omissão dos pontos em aberto (`09`), sem
   nenhuma alteração ao núcleo: 54 cartas (com os 2 jokers), todas distribuídas; começa quem recebe o 3♣; 2 a 8
   jogadores; peixinhos só nas mãos e só com cartas naturais; a partida acaba no primeiro sem cartas, ou "até ao
@@ -270,6 +293,10 @@ janela de bater, bateu, errou, troca às cegas, Gringo, revelação final, 10 jo
   - **Mentir é parte do jogo.** O servidor aceita quaisquer cartas da mão com o valor anunciado; o número é
     sempre verdadeiro. As ações válidas listam uma jogada de uma carta por carta da mão (dizem ao cliente que
     pode jogar e com que valor) — as combinações não se podem enumerar.
+  - **Uma jogada em três passos.** Por cima da mão: ① as cartas a pousar, ② o que se diz que são (numa pilha
+    nova, os 13 valores, com um ponto verde no verdadeiro), ③ jogar. O anúncio lê-se como vai ser ouvido
+    («Dois Setes»), com "É verdade" ou "É bluff", e "Escolher os meus Setes" escolhe de uma vez as cartas
+    verdadeiras.
   - **Informação oculta.** As jogadas vão como quem / quantas / que valor; só a jogada posta em causa é virada
     (`lastReveal`, até à jogada seguinte). As cartas que o próprio jogou também não vão nos eventos: a mesa
     lembra-se do que enviou para as fazer deslizar da mão. Os testes serializam todas as vistas e eventos.
@@ -296,6 +323,8 @@ janela de bater, bateu, errou, troca às cegas, Gringo, revelação final, 10 jo
   - **Terminar a sessão** é imediato: o jogo em curso não conta. O resultado ordena por pontos (empates partilham o
     lugar); quem tem mais ganha, quem tem menos perde, e uma sessão toda empatada não tem vencedor. Sem nenhum jogo
     terminado, fica `aborted`.
+  - **Um 2 não responde a um 2.** Sobre 2s só se joga com mais 2s (um 2 → dois 2, dois 2 → três 2) ou com um joker; o
+    kit deixava jogar o mesmo número de 2s (com salto), o que tirava o peso ao 2.
   - **Textos neutros.** "Perde a vez" em vez de "saltado/saltada", "Bloqueio · só 2/joker" em vez de "bloqueado/a".
   - **Simulação.** 10 000 jogos de 3 a 8 bots ao calhas, com as opções da sala sorteadas e, em parte das sessões,
     jogadores a entrar e a sair a meio, verificam em cada passo a conservação das 54 cartas, que quem tem a vez pode
@@ -312,14 +341,19 @@ janela de bater, bateu, errou, troca às cegas, Gringo, revelação final, 10 jo
     batida falhada e no fim. A mesa distingue as cartas viradas com fichas próprias (`token`), que as acompanham em
     trocas, descartes e batidas, e é isso que as faz deslizar de posição para posição.
   - **Ordem de um descarte com poder:** a carta vai para o descarte, o poder usa-se (`POWER`), e só depois abre a janela
-    de bater sobre essa carta — ninguém bate enquanto há cartas a mudar de sítio. O "espreitar" fica 3 s visível
-    (`SYS_PEEK_END`); o Rei espera a decisão de trocar ou não.
+    de bater sobre essa carta — ninguém bate enquanto há cartas a mudar de sítio. O "espreitar" fica até 5 s visível
+    (`SYS_PEEK_END`), ou até o jogador carregar em "Já memorizei" (`POWER_PEEK_DONE`); o Rei espera a decisão de
+    trocar ou não.
+  - **Trocas que se seguem com os olhos.** Numa troca entre grelhas (Valete, Rei) as duas posições acendem-se, as cartas
+    deslizam devagar (0,8 s) e ficam marcadas até à vez seguinte; a janela de bater só começa a contar depois disso
+    (`SnapWindow.leadMs` = 2,2 s). Cada carta que se pode tocar diz o que o toque faz: ⇄ trocar, 👁 espreitar,
+    ✋ bater; por cima das cartas, uma indicação explica cada passo do poder, com o tempo que falta.
   - **Bater.** Cada batida nomeia o seu `discardId`; a fila única da sala ordena as batidas simultâneas e só a primeira
     conta. Depois dela a janela fica fechada e o resultado fica na mesa 1,1 s (certa) ou 2,3 s (errada: a carta é
     mostrada 1,5 s e entra a de penalização). Como no Olho, o próximo passo automático deriva do estado
     (`scheduleFor`), por isso nunca se perde quando uma ação chega antes. Na UI bate-se com dois toques na carta.
   - **Tempos:** espreitar inicial 10 s (acaba antes se todos memorizarem), tirar 30 s e decidir 30 s (ao fim: tira e
-    descarta, sem poder), poder 15 s (ao fim: ignorado; o Rei não troca).
+    descarta, sem poder), poder 20 s (ao fim: ignorado; o Rei não troca).
   - **Casos que o kit não cobre**, decididos e testados: a carta tirada só pode trocar com uma posição que tenha carta;
     um poder que mexe na grelha de outro só existe se alguém mais tiver cartas; quem chama Gringo sem cartas não joga
     mais nada nessa vez; quem fica sem cartas durante a última volta já não precisa de a jogar.

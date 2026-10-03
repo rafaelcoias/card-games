@@ -1,4 +1,10 @@
-import type { ConfigField, GameError, GameModule, GameResult } from '@cardroom/game-core';
+import {
+  WALLET,
+  type ConfigField,
+  type GameError,
+  type GameModule,
+  type GameResult,
+} from '@cardroom/game-core';
 import { z } from 'zod';
 import { applyAction, setup } from './engine';
 import {
@@ -10,7 +16,7 @@ import {
 } from './moves';
 import { BET_UNIT, MAX_PLAYERS, MIN_PLAYERS, tableLimitsError } from './rules';
 import { randomShuffler, type Shuffler } from './shoe';
-import { currentPlayerId } from './state';
+import { currentPlayerId, walletsOf } from './state';
 import { hintsSupported } from './strategy';
 import type {
   BlackjackAction,
@@ -29,8 +35,8 @@ const chips = () => z.number().int().multipleOf(BET_UNIT);
 export const blackjackConfigSchema = z.object({
   decks: z.number().int().min(1).max(8).default(6),
   penetration: z.number().min(0.5).max(0.85).default(0.75),
-  startingStack: chips().min(100).max(100_000).default(1000),
-  minBet: chips().min(BET_UNIT).default(10),
+  // A player who ran out buys back one rebuy: it must cover the minimum.
+  minBet: chips().min(BET_UNIT).max(WALLET.rebuy).default(10),
   maxBet: chips().min(BET_UNIT).default(500),
   dealerHitsSoft17: z.boolean().default(false),
   holeCard: z.enum(['PEEK', 'EUROPEAN']).default('PEEK'),
@@ -40,7 +46,6 @@ export const blackjackConfigSchema = z.object({
   splitTensByValue: z.boolean().default(true),
   surrender: z.boolean().default(true),
   insurance: z.boolean().default(true),
-  allowRebuy: z.boolean().default(true),
   hintsEnabled: z.boolean().default(false),
   betTimeoutMs: z.number().int().min(5_000).max(60_000).default(15_000),
   decisionTimeoutMs: z.number().int().min(10_000).max(60_000).default(20_000),
@@ -83,12 +88,6 @@ export const blackjackConfigUi: ConfigField[] = [
   },
   { key: 'surrender', label: 'Desistência', options: onOff('Sim', 'Não') },
   {
-    key: 'startingStack',
-    label: 'Fichas iniciais',
-    help: 'Fichas virtuais, sem valor: não se compram nem se trocam.',
-    options: [500, 1000, 2500, 5000].map((n) => ({ label: `${n}`, value: n })),
-  },
-  {
     key: 'minBet',
     label: 'Aposta mínima',
     options: [10, 20, 50, 100].map((n) => ({ label: `${n}`, value: n })),
@@ -97,12 +96,6 @@ export const blackjackConfigUi: ConfigField[] = [
     key: 'maxBet',
     label: 'Aposta máxima',
     options: [100, 200, 500, 1000].map((n) => ({ label: `${n}`, value: n })),
-  },
-  {
-    key: 'allowRebuy',
-    label: 'Recompra',
-    help: 'Sem fichas para a mínima, volta-se às fichas iniciais; conta no saldo.',
-    options: onOff('Sim', 'Não'),
   },
   {
     key: 'hintsEnabled',
@@ -193,6 +186,7 @@ export function createBlackjackModule(shuffler: Shuffler = randomShuffler): Blac
     getTimeoutMs,
     getTimeoutAction,
     getSeatedPlayers: (state) => state.seats.map((seat) => seat.playerId),
+    getWallets: walletsOf,
     isFinished: (state) => state.phase === 'FINISHED',
     getResult,
   };

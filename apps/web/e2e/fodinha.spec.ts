@@ -8,6 +8,7 @@ async function createFodinhaRoom(host: Page): Promise<string> {
   await host.getByRole('button', { name: 'Criar sala' }).first().click();
   const dialog = host.getByRole('dialog');
   await dialog.getByText('Fodinha', { exact: true }).click();
+  await dialog.getByRole('button', { name: 'Personalizar' }).click();
   await dialog.getByText('4', { exact: true }).click();
   await dialog.getByText('3 pontos', { exact: true }).click();
   await dialog.getByText('3 cartas', { exact: true }).click();

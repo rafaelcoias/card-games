@@ -5,12 +5,14 @@ import type {
   GameViewMessage,
   JoinedRoom,
   MatchResult,
+  RoomCloseReason,
   RoomState,
   VoiceConfig,
 } from './models';
 import type {
   GameActionPayload,
   RoomChatPayload,
+  RoomConfigurePayload,
   RoomCreatePayload,
   RoomJoinPayload,
   RoomKickPayload,
@@ -22,6 +24,7 @@ import type {
 
 export const ClientEvent = {
   RoomCreate: 'room:create',
+  RoomConfigure: 'room:configure',
   RoomJoin: 'room:join',
   RoomLeave: 'room:leave',
   RoomReady: 'room:ready',
@@ -39,6 +42,7 @@ export const ServerEvent = {
   RoomState: 'room:state',
   RoomChat: 'room:chat',
   RoomKicked: 'room:kicked',
+  RoomClosed: 'room:closed',
   GameView: 'game:view',
   GameEvents: 'game:events',
   GameError: 'game:error',
@@ -52,6 +56,8 @@ export const ServerEvent = {
 /** Typed Socket.IO contract: `io<ServerToClientEvents, ClientToServerEvents>()`. */
 export interface ClientToServerEvents {
   [ClientEvent.RoomCreate]: (payload: RoomCreatePayload, ack: AckCallback<JoinedRoom>) => void;
+  /** Host, between matches: another game, or other rules, for the same players. */
+  [ClientEvent.RoomConfigure]: (payload: RoomConfigurePayload, ack: AckCallback) => void;
   [ClientEvent.RoomJoin]: (payload: RoomJoinPayload, ack: AckCallback<JoinedRoom>) => void;
   [ClientEvent.RoomLeave]: (ack: AckCallback) => void;
   [ClientEvent.RoomReady]: (payload: RoomReadyPayload, ack: AckCallback) => void;
@@ -72,6 +78,7 @@ export interface ServerToClientEvents {
   [ServerEvent.RoomState]: (room: RoomState) => void;
   [ServerEvent.RoomChat]: (message: ChatMessage) => void;
   [ServerEvent.RoomKicked]: (payload: { roomId: string }) => void;
+  [ServerEvent.RoomClosed]: (payload: { roomId: string; reason: RoomCloseReason }) => void;
   [ServerEvent.GameView]: (message: GameViewMessage) => void;
   [ServerEvent.GameEvents]: (message: GameEventsMessage) => void;
   [ServerEvent.GameError]: (error: ErrorPayload) => void;

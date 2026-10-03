@@ -172,12 +172,7 @@ function applySystem(d: Draft, action: GringoSystemAction): Failure | null {
       endInitialPeek(d);
       return null;
     case 'SYS_PEEK_END':
-      if (s.phase !== 'POWER' || s.power?.step !== 'PEEKED' || s.power.type === 'PEEK_AND_SWAP') {
-        return failure('WRONG_PHASE', 'Nobody is looking at a card');
-      }
-      d.events.push({ type: 'PeekEnded', playerId: s.seats[s.currentIndex] as PlayerId });
-      openSnapWindow(d);
-      return null;
+      return endPeek(d);
     case 'SYS_SNAP_WINDOW_CLOSED':
       if (s.phase !== 'SNAP_WINDOW' || s.snap?.discardId !== action.discardId) {
         return failure('STALE_WINDOW', 'That window is no longer open');
@@ -216,6 +211,8 @@ function applyPlayer(d: Draft, action: GringoClientAction, playerId: PlayerId): 
       return discardDrawn(d, playerId, action.usePower);
     case 'POWER_PEEK':
       return powerPeek(d, playerId, action.owner, action.index);
+    case 'POWER_PEEK_DONE':
+      return endPeek(d);
     case 'POWER_BLIND_SWAP':
       return blindSwap(d, playerId, action.myIndex, action.owner, action.theirIndex);
     case 'POWER_SWAP_DECISION':
@@ -343,6 +340,17 @@ function powerPeek(d: Draft, playerId: PlayerId, owner: PlayerId, index: number)
   return null;
 }
 
+/** The card looked at with a 10 or a queen turns back: by the player, or when its time on screen is up. */
+function endPeek(d: Draft): Failure | null {
+  const { s } = d;
+  if (s.phase !== 'POWER' || s.power?.step !== 'PEEKED' || s.power.type === 'PEEK_AND_SWAP') {
+    return failure('WRONG_PHASE', 'Nobody is looking at a card');
+  }
+  d.events.push({ type: 'PeekEnded', playerId: s.seats[s.currentIndex] as PlayerId });
+  openSnapWindow(d);
+  return null;
+}
+
 /** Jack: two cards trade places, face down, each to the exact slot of the other (rules §6). */
 function blindSwap(
   d: Draft,
@@ -362,7 +370,7 @@ function blindSwap(
   if (!mine?.card || !theirs?.card) return failure('EMPTY_SLOT', 'There is no card in that position');
   [mine.card, theirs.card] = [theirs.card, mine.card];
   d.events.push({ type: 'BlindSwapped', playerId, myIndex, owner, theirIndex });
-  openSnapWindow(d);
+  openSnapWindow(d, PACE.swap);
   return null;
 }
 
@@ -389,17 +397,20 @@ function swapDecision(d: Draft, playerId: PlayerId, swap: boolean, myIndex?: num
     owner,
     theirIndex,
   });
-  openSnapWindow(d);
+  openSnapWindow(d, swap ? PACE.swap : 0);
   return null;
 }
 
-/** A card reached the discard pile (other than by a snap): one snap may follow (rules §7). */
-function openSnapWindow(d: Draft): void {
+/**
+ * A card reached the discard pile (other than by a snap): one snap may follow
+ * (rules §7). `leadMs`: the move that opened it is still being shown.
+ */
+function openSnapWindow(d: Draft, leadMs = 0): void {
   const { s } = d;
   const card = s.discard.at(-1) as CardInstance;
   s.power = null;
   s.phase = 'SNAP_WINDOW';
-  s.snap = { discardId: s.nextDiscardId++, result: null };
+  s.snap = { discardId: s.nextDiscardId++, leadMs, result: null };
   d.events.push({ type: 'SnapWindowOpened', discardId: s.snap.discardId, card });
 }
 
@@ -518,8 +529,8 @@ function timeout(d: Draft): Failure | null {
 export function scheduleFor(state: GringoState): ScheduledAction[] {
   const at = (action: GringoSystemAction, delayMs: number): ScheduledAction[] => [{ action, delayMs }];
   if (state.phase === 'SNAP_WINDOW' && state.snap) {
-    const { discardId, result } = state.snap;
-    const delay = !result ? state.config.snapWindowMs : result.hit ? PACE.snapHit : PACE.snapMiss;
+    const { discardId, leadMs, result } = state.snap;
+    const delay = !result ? leadMs + state.config.snapWindowMs : result.hit ? PACE.snapHit : PACE.snapMiss;
     return at({ type: 'SYS_SNAP_WINDOW_CLOSED', discardId }, delay);
   }
   if (state.phase === 'POWER' && state.power?.step === 'PEEKED' && state.power.type !== 'PEEK_AND_SWAP') {

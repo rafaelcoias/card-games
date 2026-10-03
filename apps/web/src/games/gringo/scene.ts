@@ -1,5 +1,12 @@
 import type { CardInstance, PlayerId } from '@cardroom/game-core';
-import type { GameEndReason, GringoEvent, GringoView, Phase, PowerType } from '@cardroom/gringo';
+import {
+  PACE,
+  type GameEndReason,
+  type GringoEvent,
+  type GringoView,
+  type Phase,
+  type PowerType,
+} from '@cardroom/gringo';
 import type { EnterFrom } from '@cardroom/ui';
 import type { BaseScene, Step } from '../shared/use-director';
 
@@ -30,6 +37,12 @@ export interface SeatScene {
   peekDone: boolean;
 }
 
+/** A position on the table: one slot of one player's grid. */
+export interface SlotRef {
+  owner: PlayerId;
+  index: number;
+}
+
 export interface Scene extends BaseScene {
   seq: number;
   phase: Phase;
@@ -48,6 +61,11 @@ export interface Scene extends BaseScene {
   };
   power: GringoView['power'];
   peek: GringoView['peek'];
+  /**
+   * Slots whose card just changed (a swap, a drawn card put in): they stay
+   * marked until the next turn, so everyone can follow what moved where.
+   */
+  moved: SlotRef[];
   snap: GringoView['snap'];
   gringo: GringoView['gringo'];
   gringoTurnsLeft: number | null;
@@ -99,6 +117,14 @@ const newToken = () => `t${++tokens}`;
 
 const DEAL_STAGGER_MS = 50;
 
+/**
+ * Two cards trading places, in three beats that fill the server's lead before
+ * the snap window (`PACE.swap`): both slots light up, the cards glide across, they land.
+ */
+export const SWAP_BEATS = { mark: 700, glide: 1000, land: PACE.swap - 1700 } as const;
+/** How long a card takes to glide between slots: slow enough to follow with the eye. */
+export const SLOT_GLIDE_SECONDS = 0.8;
+
 export function sceneFromView(
   matchId: string,
   seq: number,
@@ -148,6 +174,7 @@ export function sceneFromView(
     },
     power: view.power,
     peek: view.peek,
+    moved: same?.moved ?? [],
     snap: view.snap,
     gringo: view.gringo,
     gringoTurnsLeft: view.gringoTurnsLeft,
@@ -215,6 +242,28 @@ function swapSlots(scene: Scene, a: [PlayerId, number], b: [PlayerId, number]): 
   return withSlot(moved, ...b, (slot) => ({ ...slot, token: first.token, face: null, enter: undefined }));
 }
 
+/**
+ * A swap everyone can follow: the two slots light up first, then the cards
+ * glide across, slowly, and the marks stay on them for the rest of the turn.
+ */
+function swapSteps(scene: Scene, a: [PlayerId, number], b: [PlayerId, number], fx: Fx): Step<Scene, Fx>[] {
+  const marked: Scene = {
+    ...scene,
+    power: null,
+    peek: null,
+    moved: [
+      { owner: a[0], index: a[1] },
+      { owner: b[0], index: b[1] },
+    ],
+  };
+  const swapped = swapSlots(marked, a, b);
+  return [
+    step(marked, SWAP_BEATS.mark, [fx]),
+    step(swapped, SWAP_BEATS.glide),
+    step(swapped, SWAP_BEATS.land),
+  ];
+}
+
 /** Advances the scene by one domain event and describes how to present it (UI §10 timings). */
 export function applyEvent(scene: Scene, event: GringoEvent): Step<Scene, Fx> | Step<Scene, Fx>[] {
   switch (event.type) {
@@ -239,6 +288,7 @@ export function applyEvent(scene: Scene, event: GringoEvent): Step<Scene, Fx> | 
           power: null,
           peek: null,
           snap: null,
+          moved: [],
         },
         150,
         [{ kind: 'turn', playerId: event.playerId }],
@@ -285,9 +335,16 @@ export function applyEvent(scene: Scene, event: GringoEvent): Step<Scene, Fx> | 
         face: null,
         enter: undefined,
       }));
-      return step({ ...next, drawn: null, discard: toDiscard(scene, old.token, discarded) }, 520, [
-        { kind: 'discarded', playerId, card: discarded, swappedIndex: index },
-      ]);
+      return step(
+        {
+          ...next,
+          drawn: null,
+          discard: toDiscard(scene, old.token, discarded),
+          moved: [{ owner: playerId, index }],
+        },
+        SLOT_GLIDE_SECONDS * 1000,
+        [{ kind: 'discarded', playerId, card: discarded, swappedIndex: index }],
+      );
     }
 
     case 'DiscardedDrawn': {
@@ -336,10 +393,14 @@ export function applyEvent(scene: Scene, event: GringoEvent): Step<Scene, Fx> | 
 
     case 'BlindSwapped': {
       const { playerId, myIndex, owner, theirIndex } = event;
-      const next = swapSlots(scene, [playerId, myIndex], [owner, theirIndex]);
-      return step({ ...next, power: null }, 650, [
-        { kind: 'swapped', playerId, myIndex, owner, theirIndex, blind: true },
-      ]);
+      return swapSteps(scene, [playerId, myIndex], [owner, theirIndex], {
+        kind: 'swapped',
+        playerId,
+        myIndex,
+        owner,
+        theirIndex,
+        blind: true,
+      });
     }
 
     case 'PeekSwapDecided': {
@@ -350,10 +411,16 @@ export function applyEvent(scene: Scene, event: GringoEvent): Step<Scene, Fx> | 
           { kind: 'kept', playerId, owner, theirIndex },
         ]);
       }
-      const next = swapSlots(scene, [playerId, myIndex], [owner, theirIndex]);
-      return step({ ...next, power: null, peek: null }, 650, [
-        { kind: 'swapped', playerId, myIndex, owner, theirIndex, blind: false },
-      ]);
+      // The card looked at turns back down before it travels.
+      const hidden = withSlot(scene, owner, theirIndex, (slot) => ({ ...slot, face: null }));
+      return swapSteps(hidden, [playerId, myIndex], [owner, theirIndex], {
+        kind: 'swapped',
+        playerId,
+        myIndex,
+        owner,
+        theirIndex,
+        blind: false,
+      });
     }
 
     case 'SnapWindowOpened':
@@ -434,7 +501,15 @@ export function applyEvent(scene: Scene, event: GringoEvent): Step<Scene, Fx> | 
     case 'GameFinished': {
       // Every grid turns over, one player after the other (UI §8), then the totals.
       const steps: Step<Scene, Fx>[] = [];
-      let current: Scene = { ...scene, phase: 'FINISHED', snap: null, power: null, peek: null, drawn: null };
+      let current: Scene = {
+        ...scene,
+        phase: 'FINISHED',
+        snap: null,
+        power: null,
+        peek: null,
+        drawn: null,
+        moved: [],
+      };
       for (const seat of scene.seats) {
         const grid = event.grids[seat.id] ?? [];
         current = withSeat(current, seat.id, (s) => ({

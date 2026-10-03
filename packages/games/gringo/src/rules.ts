@@ -14,8 +14,10 @@ export const TWO_DECKS_FROM = 7;
 
 /** Pauses the engine schedules itself (UI §10). */
 export const PACE = {
-  /** A card looked at with a power stays turned for its owner this long. */
-  peek: 3000,
+  /** A card looked at with a power stays turned for its owner this long (unless they say they memorised it). */
+  peek: 5000,
+  /** Two cards trading places (jack, king): both slots light up, the cards glide, and land. */
+  swap: 2200,
   /** A good snap: the card flies to the discard pile and the slot empties. */
   snapHit: 1100,
   /** A missed snap: the card is shown to everyone (1.5 s), goes back, a penalty card comes in. */

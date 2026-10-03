@@ -1,6 +1,6 @@
 import type { PlayerId } from '@cardroom/game-core';
 import { isPair, netChips } from './rules';
-import type { BlackjackConfig, BlackjackState, Chips, Decision, Hand, Phase, Seat } from './types';
+import type { BlackjackState, Chips, Decision, Hand, Phase, Seat } from './types';
 
 export const findSeat = (state: BlackjackState, playerId: PlayerId): Seat | undefined =>
   state.seats.find((seat) => seat.playerId === playerId);
@@ -32,13 +32,10 @@ export const isAutomaticPhase = (phase: Phase): boolean =>
   phase === 'SETTLEMENT' ||
   phase === 'SHUFFLING';
 
-/** Seats still expected to bet (those who cannot afford the minimum may rebuy first). */
+/** Seats still expected to bet (those who cannot afford the minimum rebuy first). */
 export function bettingPending(state: BlackjackState): Seat[] {
   if (state.phase !== 'BETTING') return [];
-  const { minBet, allowRebuy } = state.config;
-  return state.seats.filter(
-    (seat) => !seat.sittingOut && seat.bet === null && (seat.stack >= minBet || allowRebuy),
-  );
+  return state.seats.filter((seat) => !seat.sittingOut && seat.bet === null);
 }
 
 /** Rules §5.4: what the hand on turn may do. */
@@ -72,9 +69,20 @@ export function chipsInPlay(seat: Seat): Chips {
   return (seat.bet ?? 0) + hands + insurance;
 }
 
-/** Session balance: everything the player holds (on the felt too) minus everything they bought in. */
-export const seatNet = (seat: Seat, config: BlackjackConfig): Chips =>
-  netChips({ stack: seat.stack + chipsInPlay(seat), rebuys: seat.rebuys }, config);
+/** Everything a seat holds, on the felt too: what goes back to the account. */
+export const seatWallet = (seat: Seat): Chips => seat.stack + chipsInPlay(seat);
+
+/** Session balance: everything the player holds minus everything they brought and bought. */
+export const seatNet = (seat: Seat): Chips =>
+  netChips({ stack: seatWallet(seat), buyIn: seat.buyIn, rebuys: seat.rebuys });
+
+/** The account chips of everyone who sat down this session (see `WALLET`). */
+export function walletsOf(state: BlackjackState): Record<PlayerId, Chips> {
+  return Object.fromEntries([
+    ...state.departed.map((player) => [player.playerId, player.stack] as const),
+    ...state.seats.map((seat) => [seat.playerId, seatWallet(seat)] as const),
+  ]);
+}
 
 export const DECISIONS: readonly Decision[] = ['HIT', 'STAND', 'DOUBLE', 'SPLIT', 'SURRENDER'];
 

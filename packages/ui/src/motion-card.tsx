@@ -6,7 +6,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 import { rectCenter, useAnchors } from './anchors';
 import { Card, type CardState } from './card';
 import { cardLabel, type CardSize } from './cards';
-import { motionTokens, transitionFor } from './motion-tokens';
+import { EASE_PLAY, motionTokens, transitionFor } from './motion-tokens';
 
 export interface EnterFrom {
   /** Anchor id the card flies in from. */
@@ -23,6 +23,8 @@ export interface MotionCardProps {
   state?: CardState;
   /** Shared-element id: the card glides between containers that render the same id. */
   layoutId?: string;
+  /** Seconds the shared-layout glide takes (a quick play by default); slower when a move must be followed. */
+  glide?: number;
   /** One-off entrance animation from a named anchor (only applied on mount). */
   enter?: EnterFrom;
   /** Resting rotation in degrees (piles, fans). */
@@ -47,6 +49,7 @@ export function MotionCard({
   size = 'md',
   state = 'normal',
   layoutId,
+  glide,
   enter,
   rotate = 0,
   lifted = false,
@@ -66,7 +69,11 @@ export function MotionCard({
       <motion.div
         layoutId={layoutId}
         layout={layoutId ? true : undefined}
-        transition={transitionFor('play', reduced)}
+        transition={
+          glide !== undefined && !reduced
+            ? { duration: glide, ease: [...EASE_PLAY] }
+            : transitionFor('play', reduced)
+        }
       >
         <motion.div
           role={interactive ? 'button' : undefined}

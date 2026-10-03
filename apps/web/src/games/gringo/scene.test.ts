@@ -9,6 +9,7 @@ import {
   createGringoModule,
   gringo,
   gringoConfigSchema,
+  PACE,
   scheduleFor,
   type Dealer,
   type GringoAction,
@@ -117,6 +118,36 @@ describe('gringo scene', () => {
     run.act({ type: 'POWER_BLIND_SWAP', myIndex: 0, owner: 'carla', theirIndex: 1 }, ME);
     expect(run.tokenAt(ME, 0)).toBe(theirs);
     expect(run.tokenAt('carla', 1)).toBe(mine);
+  });
+
+  it('marks both slots before a swap moves them, fills the server lead, and clears the marks next turn', () => {
+    const run = new Run(['JH']);
+    run.act({ type: 'SYS_INITIAL_PEEK_END' });
+    run.act({ type: 'DRAW' }, ME);
+    run.act({ type: 'DISCARD_DRAWN', usePower: true }, ME);
+    const mine = run.tokenAt(ME, 0);
+    const steps = [
+      applyEvent(run.scene, {
+        type: 'BlindSwapped',
+        playerId: ME,
+        myIndex: 0,
+        owner: 'carla',
+        theirIndex: 1,
+      }),
+    ].flat();
+    const marks = [
+      { owner: ME, index: 0 },
+      { owner: 'carla', index: 1 },
+    ];
+    // Beat one: the slots light up while the cards are still in place.
+    expect(steps[0]!.scene.moved).toEqual(marks);
+    expect(steps[0]!.scene.seats[0]!.slots[0]!.token).toBe(mine);
+    expect(steps.reduce((ms, s) => ms + s.waitMs, 0)).toBe(PACE.swap);
+
+    run.act({ type: 'POWER_BLIND_SWAP', myIndex: 0, owner: 'carla', theirIndex: 1 }, ME);
+    expect(run.scene.moved).toEqual(marks);
+    run.act({ type: 'SYS_SNAP_WINDOW_CLOSED', discardId: run.state.snap!.discardId });
+    expect(run.scene.moved).toEqual([]);
   });
 
   it('a missed snap is shown, then goes back down while the penalty card comes in', () => {

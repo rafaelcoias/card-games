@@ -2,20 +2,20 @@
 
 import { Card } from '@cardroom/ui';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
 import { OnlinePanel } from '@/components/players/online-panel';
 import { Button } from '@/components/ui/button';
+import { useDialog } from '@/components/ui/modal';
 import { Spinner } from '@/components/ui/spinner';
 import { browserApi } from '@/lib/auth/client-token';
 import { usePolling } from '@/lib/use-polling';
-import { CreateRoomDialog } from './create-room-dialog';
 import { JoinByCode } from './join-by-code';
+import { RoomSettingsDialog } from './room-settings-dialog';
 
 const POLL_MS = 4_000;
 
 export function LobbyScreen() {
   const router = useRouter();
-  const [creating, setCreating] = useState(false);
+  const creating = useDialog();
   const rooms = usePolling(() => browserApi.publicRooms(), POLL_MS);
 
   return (
@@ -27,13 +27,13 @@ export function LobbyScreen() {
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <JoinByCode />
-          <Button size="lg" onClick={() => setCreating(true)}>
+          <Button size="lg" onClick={creating.show}>
             Criar sala
           </Button>
         </div>
       </div>
 
-      <div className="mt-10 grid items-start gap-6 lg:grid-cols-[1fr_320px]">
+      <div className="mt-10 grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <OnlinePanel className="lg:sticky lg:top-24 lg:order-last" />
         <section aria-labelledby="public-rooms">
           <div className="flex items-center gap-3">
@@ -48,7 +48,7 @@ export function LobbyScreen() {
               Não foi possível carregar as salas. A tentar novamente…
             </p>
           ) : rooms.data && rooms.data.length === 0 ? (
-            <EmptyState onCreate={() => setCreating(true)} />
+            <EmptyState onCreate={creating.show} />
           ) : (
             <ul className="mt-4 grid gap-3 sm:grid-cols-2">
               {(rooms.data ?? []).map((room) => (
@@ -89,7 +89,7 @@ export function LobbyScreen() {
         </section>
       </div>
 
-      <CreateRoomDialog open={creating} onClose={() => setCreating(false)} />
+      <RoomSettingsDialog key={creating.key} open={creating.open} onClose={creating.hide} />
     </div>
   );
 }

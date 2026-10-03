@@ -16,11 +16,14 @@ export function StatsSummary({ stats }: { stats: PlayerStats }) {
         <Stat label="% vitórias" value={`${winRate(stats)}%`} />
       </dl>
       {games.length > 1 && (
-        <ul className="panel divide-y divide-line px-5" aria-label="Por jogo">
+        <ul className="panel divide-y divide-line px-4 sm:px-5" aria-label="Por jogo">
           {games.map(([gameId, s]) => (
-            <li key={gameId} className="flex items-center gap-3 py-2.5 text-sm">
-              <span className="flex-1 font-medium">{game(gameId)?.name ?? gameId}</span>
-              <span className="tabular-nums text-muted">
+            <li
+              key={gameId}
+              className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2.5 text-sm"
+            >
+              <span className="font-medium">{game(gameId)?.name ?? gameId}</span>
+              <span className="ml-auto text-right tabular-nums text-muted">
                 {game(gameId)?.resultStyle === 'survival'
                   ? `${s.played} partidas · ${s.played - s.losses} sobreviveu · ${s.losses} perdeu`
                   : game(gameId)?.resultStyle === 'chips'

@@ -330,12 +330,19 @@ function finishIfOnePlayerLeft(draft: MexicanaState, events: MexicanaEvent[]): b
   return true;
 }
 
-/** Passes the turn, consuming pending skips from 8s one player at a time (rules §7). */
+/**
+ * Passes the turn, consuming pending skips from 8s one player at a time
+ * (rules §7). Skips count the other players in a cycle and never the one who
+ * played: two 8s at once do what two 8s one after the other would.
+ */
 function advanceTurn(draft: MexicanaState, by: PlayerId, events: MexicanaEvent[]): void {
   let index = nextActiveIndex(draft, draft.currentIndex);
   while (draft.pendingSkips > 0) {
-    events.push({ type: 'PlayerSkipped', playerId: draft.turnOrder[index] as PlayerId, by });
-    draft.pendingSkips -= 1;
+    const playerId = draft.turnOrder[index] as PlayerId;
+    if (playerId !== by) {
+      events.push({ type: 'PlayerSkipped', playerId, by });
+      draft.pendingSkips -= 1;
+    }
     index = nextActiveIndex(draft, index);
   }
   draft.currentIndex = index;

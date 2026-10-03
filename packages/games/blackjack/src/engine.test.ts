@@ -1,4 +1,4 @@
-import { SYSTEM_PLAYER_ID, createSeededRng } from '@cardroom/game-core';
+import { SYSTEM_PLAYER_ID, WALLET, createSeededRng } from '@cardroom/game-core';
 import { describe, expect, it } from 'vitest';
 import { scheduleFor } from './engine';
 import { blackjack, blackjackActionSchema, blackjackConfigSchema, validateTable } from './module';
@@ -46,11 +46,16 @@ describe('setup', () => {
   });
 
   it('keeps the room seats and opens the bets on a shuffled six-deck shoe', () => {
-    const state = blackjack.setup(['a', 'b'], config(), createSeededRng('s'), { seats: [5, 2] });
-    expect(state.seats.map((s) => [s.seatIndex, s.playerId, s.stack])).toEqual([
-      [2, 'b', 1000],
-      [5, 'a', 1000],
+    const state = blackjack.setup(['a', 'b'], config(), createSeededRng('s'), {
+      seats: [5, 2],
+      wallets: { a: 1200, b: 800 },
+    });
+    // Everyone sits down with the chips of their account.
+    expect(state.seats.map((s) => [s.seatIndex, s.playerId, s.stack, s.buyIn])).toEqual([
+      [2, 'b', 800, 800],
+      [5, 'a', 1200, 1200],
     ]);
+    expect(blackjack.setup(['a'], config(), createSeededRng('s')).seats[0]?.stack).toBe(WALLET.start);
     expect(state).toMatchObject({ phase: 'BETTING', round: 1, shoeIndex: 0, cutIndex: 234, shuffles: 1 });
     expect(state.shoe).toHaveLength(312);
     expect(new Set(state.shoe.map((c) => c.uid)).size).toBe(312);
@@ -68,7 +73,7 @@ describe('setup', () => {
 
 describe('bets (09 §4)', () => {
   it('refuses bets off the limits, off the 10s, above the stack, twice or out of phase', () => {
-    const t = new Table(blackjack, AB, { startingStack: 500, maxBet: 500 });
+    const t = new Table(blackjack, AB, { maxBet: 500 }, { wallets: { a: 500, b: 500 } });
     expectError(t.try({ type: 'PLACE_BET', amount: 0 }, 'a'), 'INVALID_BET');
     expectError(t.try({ type: 'PLACE_BET', amount: 510 }, 'a'), 'INVALID_BET');
     expectError(t.try({ type: 'PLACE_BET', amount: 15 }, 'a'), 'INVALID_BET');
@@ -122,19 +127,25 @@ describe('bets (09 §4)', () => {
     expect(t.state).toMatchObject({ phase: 'BETTING', round: 1, roundsDealt: 0 });
   });
 
-  it('rebuys only when broke, before betting, and where allowed', () => {
-    const t = new Table(blackjack, ['a'], { startingStack: 500, maxBet: 500 });
+  it('rebuys one rebuy of the account (500) only when broke, before betting', () => {
+    const t = new Table(blackjack, ['a']);
     expectError(t.try({ type: 'REBUY' }, 'a'), 'REBUY_NOT_NEEDED');
     t.setStack('a', 5);
+    // Broke: still expected at the table, to rebuy first.
+    expect(blackjack.getPendingPlayers(t.state)).toEqual(['a']);
     expect(blackjack.getValidActions(t.state, 'a')[0]).toEqual({ type: 'REBUY' });
     const rebought = t.apply({ type: 'REBUY' }, 'a');
     expect(rebought.events).toEqual([{ type: 'PlayerRebought', seatIndex: 0, stack: 505, rebuys: 1 }]);
-    const off = new Table(blackjack, ['a'], { allowRebuy: false });
-    off.setStack('a', 0);
-    expectError(off.try({ type: 'REBUY' }, 'a'), 'REBUY_DISABLED');
-    // Broke without rebuys: nothing to wait for.
-    expect(blackjack.getPendingPlayers(off.state)).toEqual([]);
-    expect(blackjack.getValidActions(off.state, 'a')).toEqual([{ type: 'SIT_OUT', value: true }]);
+    expect(blackjack.getWallets?.(t.state)).toEqual({ a: 505 });
+    expect(t.state.seats[0]).toMatchObject({ buyIn: 1000, rebuys: 1 });
+    expectError(t.try({ type: 'REBUY' }, 'a'), 'REBUY_NOT_NEEDED');
+  });
+
+  it('tells the server what each account holds, chips on the felt included', () => {
+    const t = new Table(blackjack, AB, {}, { wallets: { a: 300, b: 2000 } });
+    t.apply({ type: 'PLACE_BET', amount: 100 }, 'a');
+    expect(t.stack('a')).toBe(200);
+    expect(blackjack.getWallets?.(t.state)).toEqual({ a: 300, b: 2000 });
   });
 
   it('sitting out returns the bet and skips the deal until the player is back', () => {
@@ -463,8 +474,8 @@ describe('a session (09 §8)', () => {
   it('someone who sits down mid-round plays from the next bets', () => {
     const t = oneHand(['10S', '6S'], ['7C', '10C']);
     t.bet({ a: 100 });
-    const joined = t.system({ type: 'SYS_PLAYER_JOINED', playerId: 'z', seatIndex: 3 });
-    expect(joined.events).toEqual([{ type: 'PlayerJoined', seatIndex: 3, playerId: 'z', stack: 1000 }]);
+    const joined = t.system({ type: 'SYS_PLAYER_JOINED', playerId: 'z', seatIndex: 3, wallet: 2500 });
+    expect(joined.events).toEqual([{ type: 'PlayerJoined', seatIndex: 3, playerId: 'z', stack: 2500 }]);
     expect(blackjack.getPendingPlayers(t.state)).toEqual(['a']);
     expect(blackjack.getValidActions(t.state, 'z')).toEqual([{ type: 'SIT_OUT', value: true }]);
     t.play('a', 'STAND');
@@ -494,7 +505,9 @@ describe('a session (09 §8)', () => {
     t.apply({ type: 'PLACE_BET', amount: 50 }, 'a');
     t.apply({ type: 'PLACE_BET', amount: 70 }, 'c');
     t.system({ type: 'SYS_PLAYER_LEFT', playerId: 'c' });
-    expect(t.state.departed).toEqual([{ playerId: 'c', stack: 1000, rebuys: 0, roundsPlayed: 0 }]);
+    expect(t.state.departed).toEqual([
+      { playerId: 'c', stack: 1000, buyIn: 1000, rebuys: 0, roundsPlayed: 0 },
+    ]);
     const left = t.system({ type: 'SYS_PLAYER_LEFT', playerId: 'b' });
     expect(eventTypes(left.events)).toContain('BettingClosed'); // only a was still in, and had bet
     expect(blackjack.getSeatedPlayers?.(t.state)).toEqual(['a']);
@@ -540,6 +553,11 @@ describe('a session (09 §8)', () => {
       roundsPlayed: 1,
     });
     expect(t.state.departed).toEqual([]);
+    // Back with what their account holds now: chips won elsewhere count as brought, not won here.
+    t.system({ type: 'SYS_PLAYER_LEFT', playerId: 'a' });
+    t.system({ type: 'SYS_PLAYER_JOINED', playerId: 'a', seatIndex: 4, wallet: 1500 });
+    expect(t.state.seats.find((s) => s.playerId === 'a')).toMatchObject({ stack: 1500, buyIn: 1600 });
+    expect(blackjack.getPlayerView(t.state, 'a').seats.find((s) => s.playerId === 'a')?.net).toBe(-100);
   });
 
   it('leaving during insurance declines it', () => {
@@ -585,12 +603,12 @@ describe('a session (09 §8)', () => {
     Object.assign(seat('a'), { stack: 1500, roundsPlayed: 3 });
     Object.assign(seat('b'), { stack: 900, rebuys: 1, roundsPlayed: 3 });
     Object.assign(seat('c'), { stack: 1500, roundsPlayed: 2 });
-    t.state.departed.push({ playerId: 'e', stack: 200, rebuys: 0, roundsPlayed: 1 });
+    t.state.departed.push({ playerId: 'e', stack: 200, buyIn: 1000, rebuys: 0, roundsPlayed: 1 });
     expect(blackjack.getResult(t.state).standings).toEqual([
       { playerId: 'a', outcome: 'PLACED', position: 1, score: 500 },
       { playerId: 'c', outcome: 'PLACED', position: 1, score: 500 },
-      { playerId: 'e', outcome: 'PLACED', position: 3, score: -800 },
-      { playerId: 'b', outcome: 'PLACED', position: 4, score: -1100 },
+      { playerId: 'b', outcome: 'PLACED', position: 3, score: -600 }, // 900 − 1000 brought − 500 rebought
+      { playerId: 'e', outcome: 'PLACED', position: 4, score: -800 },
     ]);
   });
 });
@@ -600,7 +618,6 @@ describe('module', () => {
     expect(blackjackConfigSchema.parse({})).toEqual({
       decks: 6,
       penetration: 0.75,
-      startingStack: 1000,
       minBet: 10,
       maxBet: 500,
       dealerHitsSoft17: false,
@@ -611,7 +628,6 @@ describe('module', () => {
       splitTensByValue: true,
       surrender: true,
       insurance: true,
-      allowRebuy: true,
       hintsEnabled: false,
       betTimeoutMs: 15_000,
       decisionTimeoutMs: 20_000,
@@ -619,6 +635,7 @@ describe('module', () => {
     });
     expect(blackjackConfigSchema.safeParse({ blackjackPayout: '6:5' }).success).toBe(false);
     expect(blackjackConfigSchema.safeParse({ minBet: 15 }).success).toBe(false);
+    expect(blackjackConfigSchema.safeParse({ minBet: 510 }).success).toBe(false);
     expect(blackjack).toMatchObject({ minPlayers: 1, maxPlayers: 7, lifecycle: 'SESSION' });
   });
 

@@ -25,7 +25,7 @@ export function getPlayerView(state: BlackjackState, viewerId: PlayerId | null):
     playerId: seat.playerId,
     stack: seat.stack,
     rebuys: seat.rebuys,
-    net: seatNet(seat, config),
+    net: seatNet(seat),
     bet: seat.bet,
     lastBet: seat.lastBet,
     insurance: seat.insurance ? { ...seat.insurance } : null,
@@ -93,17 +93,23 @@ function hintFor(state: BlackjackState, viewerId: PlayerId): Decision | null {
 
 /** Everyone who sat down this session, best net first (the session result, rebuys discounted). */
 export function sessionRows(state: BlackjackState): SessionRow[] {
-  const { config } = state;
   const rows: SessionRow[] = [
     ...state.seats.map((seat) => ({
       playerId: seat.playerId,
       stack: seat.stack,
       rebuys: seat.rebuys,
-      net: seatNet(seat, config),
+      net: seatNet(seat),
       roundsPlayed: seat.roundsPlayed,
       seated: true,
     })),
-    ...state.departed.map((player) => ({ ...player, net: netChips(player, config), seated: false })),
+    ...state.departed.map((player) => ({
+      playerId: player.playerId,
+      stack: player.stack,
+      rebuys: player.rebuys,
+      net: netChips(player),
+      roundsPlayed: player.roundsPlayed,
+      seated: false,
+    })),
   ];
   return rows.sort((a, b) => b.net - a.net);
 }

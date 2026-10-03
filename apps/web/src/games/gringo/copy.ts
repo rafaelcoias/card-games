@@ -19,6 +19,14 @@ export const POWER_LABEL: Record<PowerType, string> = {
   PEEK_AND_SWAP: 'espreitar e decidir trocar',
 };
 
+/** The power of a card, as a heading (the coach over the player's cards). */
+export const POWER_TITLE: Record<PowerType, string> = {
+  PEEK_OTHER: 'espreitar uma carta de outro',
+  BLIND_SWAP: 'trocar às cegas',
+  PEEK_OWN: 'espreitar uma carta tua',
+  PEEK_AND_SWAP: 'espreitar e decidir trocar',
+};
+
 /** What the player must do once the power is on (status line). */
 export const POWER_PROMPT: Record<PowerType, string> = {
   PEEK_OTHER: 'Toca numa carta de outro jogador para a espreitar',

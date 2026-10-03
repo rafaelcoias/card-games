@@ -8,8 +8,11 @@ import {
 import type Redis from 'ioredis';
 import { REDIS } from '../redis/redis.module';
 
-/** `turn`: decision deadline · `grace`: reconnect window · `system`: engine-scheduled action. */
-export type TimerKind = 'turn' | 'grace' | 'system';
+/**
+ * `turn`: decision deadline · `grace`: reconnect window · `system`: engine-scheduled
+ * action · `expire`: a room reaching its maximum age.
+ */
+export type TimerKind = 'turn' | 'grace' | 'system' | 'expire';
 
 export interface TimerJob {
   kind: TimerKind;

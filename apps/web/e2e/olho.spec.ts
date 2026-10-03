@@ -80,6 +80,7 @@ test('an Olho session through the UI: an exchange, a latecomer, a reload and a p
   await host.getByRole('button', { name: 'Criar sala' }).first().click();
   const dialog = host.getByRole('dialog');
   await dialog.getByText('Olho', { exact: true }).click();
+  await dialog.getByRole('button', { name: 'Personalizar' }).click();
   await dialog.getByText('15s', { exact: true }).first().click();
   await dialog.getByRole('button', { name: 'Criar sala' }).click();
   await host.waitForURL(/\/room\/[A-Z0-9]{6}$/);

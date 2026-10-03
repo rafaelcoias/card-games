@@ -152,14 +152,14 @@ describe('settlement matrix (09 §5)', () => {
 });
 
 describe('chips', () => {
-  it('net discounts rebuys', () => {
-    expect(netChips({ stack: 1200, rebuys: 0 }, { startingStack: 1000 })).toBe(200);
-    expect(netChips({ stack: 800, rebuys: 1 }, { startingStack: 1000 })).toBe(-1200);
+  it('net discounts what was brought and every rebuy', () => {
+    expect(netChips({ stack: 1200, buyIn: 1000, rebuys: 0 })).toBe(200);
+    expect(netChips({ stack: 800, buyIn: 1000, rebuys: 1 })).toBe(-700);
   });
 
   it('table limits must fit together', () => {
     expect(tableLimitsError(config())).toBeNull();
     expect(tableLimitsError(config({ minBet: 100, maxBet: 50 }))).toMatch(/mínima/);
-    expect(tableLimitsError(config({ startingStack: 500, maxBet: 1000 }))).toMatch(/iniciais/);
+    expect(tableLimitsError({ ...config(), minBet: 600, maxBet: 1000 })).toMatch(/recompra/);
   });
 });

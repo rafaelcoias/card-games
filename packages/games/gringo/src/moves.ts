@@ -57,7 +57,7 @@ function powerActions(
   mine: readonly number[],
 ): GringoClientAction[] {
   if (power.step === 'PEEKED') {
-    if (power.type !== 'PEEK_AND_SWAP') return [];
+    if (power.type !== 'PEEK_AND_SWAP') return [{ type: 'POWER_PEEK_DONE' }];
     return [
       { type: 'POWER_SWAP_DECISION', swap: false },
       ...mine.map((myIndex): GringoClientAction => ({ type: 'POWER_SWAP_DECISION', swap: true, myIndex })),
@@ -120,7 +120,7 @@ export function getDefaultAction(state: GringoState, playerId: PlayerId): Gringo
   }
 }
 
-/** A power's peek on screen: nobody owes anything, the engine ends it by itself. */
+/** A power's peek on screen: nobody owes anything, the engine ends it by itself (or the player, earlier). */
 const peekShowing = (state: GringoState): boolean =>
   state.phase === 'POWER' && state.power?.step === 'PEEKED' && state.power.type !== 'PEEK_AND_SWAP';
 
@@ -131,7 +131,7 @@ export function getPendingPlayers(state: GringoState): PlayerId[] {
   return current && !peekShowing(state) ? [current] : [];
 }
 
-/** Rules §12: 10 s to memorise, 30 s to draw and to decide, 15 s for a power. The snap window runs on its own. */
+/** Rules §12: 10 s to memorise, 30 s to draw and to decide, 20 s for a power. The snap window runs on its own. */
 export function getTimeoutMs(state: GringoState): number | null {
   if (getPendingPlayers(state).length === 0) return null;
   const { config } = state;

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { GameStanding } from '@cardroom/game-core';
+import { WALLET, type GameStanding } from '@cardroom/game-core';
 import { emptyStats, legacyOutcome, placementOutcome, type MatchHistoryPlayer } from '@cardroom/shared';
 import { FieldValue, Timestamp, type DocumentSnapshot, type Firestore } from 'firebase-admin/firestore';
 import { FIRESTORE } from '../firebase/firebase';
@@ -108,6 +108,29 @@ export class ProfilesRepository {
     return taken ? null : this.find(id);
   }
 
+  /** The chips of each account (games played with them); a profile that never played has `WALLET.start`. */
+  async wallets(ids: readonly string[]): Promise<Record<string, number>> {
+    if (ids.length === 0) return {};
+    const snapshots = await this.db.getAll(
+      ...ids.map((id) => this.db.collection(COLLECTIONS.profiles).doc(id)),
+    );
+    return Object.fromEntries(
+      snapshots.map((snapshot) => [
+        snapshot.id,
+        (snapshot.data() as ProfileDoc | undefined)?.chips ?? WALLET.start,
+      ]),
+    );
+  }
+
+  /** Keeps the accounts in step with a table played with their chips. */
+  async setWallets(wallets: Readonly<Record<string, number>>): Promise<void> {
+    const batch = this.db.batch();
+    for (const [id, chips] of Object.entries(wallets)) {
+      batch.set(this.db.collection(COLLECTIONS.profiles).doc(id), { chips }, { merge: true });
+    }
+    await batch.commit();
+  }
+
   async findByUsername(username: string): Promise<ProfileRecord | null> {
     const claim = await this.db.collection(COLLECTIONS.usernames).doc(username.toLowerCase()).get();
     const uid = (claim.data() as { uid?: string } | undefined)?.uid;
@@ -169,6 +192,7 @@ function toProfile(id: string, data: ProfileDoc): ProfileRecord {
     // Server timestamps are briefly null in the writer's own snapshot.
     createdAt: data.createdAt?.toDate() ?? new Date(),
     stats: { ...emptyStats(), ...stats, byGame: stats.byGame ?? {} },
+    chips: data.chips ?? WALLET.start,
   };
 }
 
@@ -200,6 +224,17 @@ export class RoomsRepository {
       .collection(COLLECTIONS.rooms)
       .doc(id)
       .set({ status, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  }
+
+  /** The host changed the game or the rules between matches. */
+  async updateSettings(
+    id: string,
+    settings: { gameId: string; isPrivate: boolean; maxPlayers: number },
+  ): Promise<void> {
+    await this.db
+      .collection(COLLECTIONS.rooms)
+      .doc(id)
+      .set({ ...settings, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   }
 }
 

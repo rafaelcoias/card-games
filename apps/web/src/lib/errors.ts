@@ -47,7 +47,6 @@ const MESSAGES: Record<string, string> = {
   INVALID_BET: 'Aposta fora dos limites da mesa (múltiplos de 10).',
   NOT_ENOUGH_CHIPS: 'Não tens fichas suficientes.',
   NO_BET: 'Não tens aposta para limpar.',
-  REBUY_DISABLED: 'Esta mesa não permite recompras.',
   REBUY_NOT_NEEDED: 'Ainda tens fichas para a aposta mínima.',
   NO_CHANGE: 'Já está assim.',
   NO_OFFER: 'Essa oferta já não está disponível.',

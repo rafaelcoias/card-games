@@ -26,6 +26,8 @@ export interface ProfileDoc {
   createdAt: Timestamp;
   /** Counters maintained atomically when matches end. */
   stats?: PlayerStats;
+  /** Chips of the account (absent until they first change: `WALLET.start`). */
+  chips?: number;
 }
 
 export interface ProfileRecord {
@@ -35,6 +37,7 @@ export interface ProfileRecord {
   guest: boolean;
   createdAt: Date;
   stats: PlayerStats;
+  chips: number;
 }
 
 export interface RoomDoc {

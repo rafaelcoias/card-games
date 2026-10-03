@@ -39,7 +39,7 @@ test('a guest joins from a room link, plays, then creates an account and keeps t
     }
   }
   await expect(guest.getByRole('button', { name: 'Voltar à sala' })).toBeVisible();
-  await guest.getByRole('button', { name: 'Voltar ao lobby' }).click();
+  await guest.getByRole('button', { name: 'Sair da sala' }).click();
   await guest.waitForURL(/\/lobby$/);
 
   // The guest's profile: their match is there, and an account can be created from it.

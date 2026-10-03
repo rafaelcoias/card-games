@@ -13,6 +13,22 @@ import { Grid, type SlotMode } from './grid';
 import { ANCHORS, type Scene, type SeatScene } from './scene';
 import { GringoBadge, StampMark, Total, type Stamp } from './seat';
 
+/** Time left for what the coach asks; `receivedAt` absent: the full `remainingMs` from when it appears. */
+export type Drain = Pick<TimerLike, 'remainingMs' | 'totalMs'> & { receivedAt?: number };
+
+/**
+ * What to do right now, over the viewer's own cards: the initial peek, the
+ * card just drawn, each step of a power, the second tap of a snap.
+ */
+export interface Coach {
+  /** One decision: the pill (and its bar) restarts only when this changes. */
+  key: string;
+  title: string;
+  detail?: string;
+  tone: 'gold' | 'plain' | 'danger';
+  drain: Drain | null;
+}
+
 export interface MyGridProps {
   seat: SeatScene;
   size: CardSize;
@@ -21,12 +37,17 @@ export interface MyGridProps {
   onSelect: (index: number) => void;
   raised: ReadonlySet<number>;
   watched: number | null;
+  moved: ReadonlySet<number>;
   stamp: Stamp | null;
   redKingValue: -3 | -1 | null;
-  /** The initial peek (UI §3): "Memoriza!" and a bar that empties with the time. */
-  memorise: TimerLike | null;
-  hint: string | null;
+  coach: Coach | null;
 }
+
+const COACH_TONE: Record<Coach['tone'], { pill: string; bar: string }> = {
+  gold: { pill: 'bg-gold text-gold-ink', bar: 'bg-gold-strong' },
+  plain: { pill: 'bg-black/70 text-ivory ring-1 ring-white/10', bar: 'bg-white/10' },
+  danger: { pill: 'bg-danger text-white', bar: 'bg-black/15' },
+};
 
 /** The viewer's own grid, big, at the bottom of the table. */
 export function MyGrid({
@@ -37,31 +58,36 @@ export function MyGrid({
   onSelect,
   raised,
   watched,
+  moved,
   stamp,
   redKingValue,
-  memorise,
-  hint,
+  coach,
 }: MyGridProps) {
+  const tone = coach ? COACH_TONE[coach.tone] : null;
   return (
-    <div className="relative flex flex-col items-center pt-5">
-      <AnimatePresence>
-        {(memorise || hint) && (
+    <div className={clsx('relative flex flex-col items-center', coach?.detail ? 'pt-12' : 'pt-7')}>
+      <AnimatePresence mode="popLayout">
+        {coach && tone && (
           <motion.div
-            key={memorise ? 'memorise' : hint}
-            className="pointer-events-none absolute top-0 z-[75] flex flex-col items-center"
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
+            key={coach.key}
+            className="pointer-events-none absolute top-0 z-[75] flex max-w-[min(92vw,30rem)] flex-col items-center"
+            initial={{ opacity: 0, y: 6, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
           >
-            <span
+            <div
               className={clsx(
-                'relative overflow-hidden whitespace-nowrap rounded-full px-3 py-0.5 text-xs font-bold shadow-lg',
-                memorise ? 'bg-gold text-gold-ink' : 'bg-black/60 text-ivory',
+                'relative overflow-hidden rounded-2xl px-3.5 py-1 text-center shadow-lg',
+                tone.pill,
               )}
             >
-              {memorise && <DrainBar key={memorise.receivedAt} timer={memorise} />}
-              <span className="relative">{memorise ? 'Memoriza as tuas cartas!' : hint}</span>
-            </span>
+              {coach.drain && <DrainBar drain={coach.drain} className={tone.bar} />}
+              <p className="relative text-[13px] font-bold leading-5">{coach.title}</p>
+              {coach.detail && (
+                <p className="relative text-[11px] font-medium leading-4 opacity-80">{coach.detail}</p>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -75,6 +101,7 @@ export function MyGrid({
         onSelect={onSelect}
         raised={raised}
         watched={watched}
+        moved={moved}
         redKingValue={redKingValue}
         flash={stamp}
       />
@@ -83,14 +110,19 @@ export function MyGrid({
   );
 }
 
-/** A bar that empties with the timer: started once per timer, so React does no per-frame work. */
-function DrainBar({ timer }: { timer: TimerLike }) {
-  const [remaining] = useState(() => Math.max(0, timer.remainingMs - (performance.now() - timer.receivedAt)));
+/** A bar that empties with the time left: started once per decision, so React does no per-frame work. */
+function DrainBar({ drain, className }: { drain: Drain; className: string }) {
+  const [remaining] = useState(() =>
+    Math.max(
+      0,
+      drain.remainingMs - (drain.receivedAt === undefined ? 0 : performance.now() - drain.receivedAt),
+    ),
+  );
   return (
     <motion.span
       aria-hidden="true"
-      className="absolute inset-y-0 left-0 w-full origin-left bg-gold-strong"
-      initial={{ scaleX: remaining / timer.totalMs }}
+      className={clsx('absolute inset-y-0 left-0 w-full origin-left', className)}
+      initial={{ scaleX: remaining / drain.totalMs }}
       animate={{ scaleX: 0 }}
       transition={{ duration: remaining / 1000, ease: 'linear' }}
     />
