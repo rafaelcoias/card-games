@@ -75,7 +75,40 @@ export interface SetupOptions {
   readonly seats?: readonly number[];
   /** Games played with the account's chips: what each player brings to the table. */
   readonly wallets?: Readonly<Record<PlayerId, number>>;
+  /** Games that declare `seating`: who sits in each named seat (every seat is taken). */
+  readonly seating?: Readonly<Record<string, PlayerId>>;
 }
+
+/**
+ * Named seats chosen in the room before a match (e.g. the four sides of a
+ * Sueca table). Seat `i` of the room is `seats[i]`; partners are given by
+ * `teams`. A match starts only with every seat taken.
+ */
+export interface Seating {
+  /** In the order of play. */
+  readonly seats: readonly string[];
+  readonly teams?: Readonly<Record<string, readonly string[]>>;
+}
+
+/**
+ * What happens when a player of a running match drops. `AUTO_ACTION` (the
+ * default): the server plays for them once their grace period is over.
+ * `PAUSE`: the table stops (`PauseAction`s) until they are back, or until the
+ * host, once `getPauseGraceMs` has passed, ends the match without a result.
+ */
+export type DisconnectPolicy = 'AUTO_ACTION' | 'PAUSE';
+
+/** System actions the server applies (as `SYSTEM_PLAYER_ID`) to games with the `PAUSE` policy. */
+export type PauseAction =
+  /** A seated player dropped (or left): the table waits for them. */
+  | { readonly type: 'SYS_PAUSE'; readonly playerId: PlayerId }
+  /** They are back; the game goes on once nobody else is missing. */
+  | { readonly type: 'SYS_RESUME'; readonly playerId: PlayerId };
+
+export const pauseActions = {
+  pause: (playerId: PlayerId): PauseAction => ({ type: 'SYS_PAUSE', playerId }),
+  resume: (playerId: PlayerId): PauseAction => ({ type: 'SYS_RESUME', playerId }),
+} as const;
 
 /**
  * The chips of an account, for games played with them (Blackjack): virtual,
@@ -148,6 +181,10 @@ export interface GameModule<State, Action, Config, View = unknown, Event extends
   readonly minPlayers: number;
   readonly maxPlayers: number;
   readonly lifecycle: Lifecycle;
+  /** Players pick named seats (and with them, teams) in the room. Absent: seats follow arrival. */
+  readonly seating?: Seating;
+  /** Absent: `AUTO_ACTION`. */
+  readonly disconnectPolicy?: DisconnectPolicy;
   /** Validates/normalises room configuration (defaults applied). */
   readonly configSchema: z.ZodType<Config>;
   /** Room settings shown when creating a room; defaults come from `configSchema`. */
@@ -188,6 +225,13 @@ export interface GameModule<State, Action, Config, View = unknown, Event extends
    * `SYS_PLAYER_JOINED`.
    */
   getWallets?(state: State): Readonly<Record<PlayerId, number>>;
+  /** `PAUSE` games: how long the table waits for a player who dropped before the host may end it. */
+  getPauseGraceMs?(state: State): number;
+  /**
+   * Games that forbid table talk at times (Sueca: during a hand, so partners
+   * cannot signal): whether the room's chat takes messages now. Absent: always.
+   */
+  isChatOpen?(state: State): boolean;
   isFinished(state: State): boolean;
   getResult(state: State): GameResult;
 }

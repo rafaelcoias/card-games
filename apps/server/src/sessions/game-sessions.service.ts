@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import {
   SYSTEM_PLAYER_ID,
+  pauseActions,
   sessionActions,
   type AnyGameModule,
   type GameRegistry,
@@ -15,8 +16,8 @@ import { GAME_REGISTRY } from '../games/tokens';
 import { MatchesRepository, ProfilesRepository, RoomsRepository } from '../persistence/repositories';
 import type { Effects } from '../rooms/effects';
 import { RoomCloser } from '../rooms/room-closer';
-import { hostGone, purgeLeftMembers, requireMember } from '../rooms/room.logic';
-import type { RoomMember, RoomRecord, SessionRecord } from '../rooms/room.model';
+import { findMember, hostGone, purgeLeftMembers, requireHost, requireMember } from '../rooms/room.logic';
+import type { RoomMember, RoomRecord, SessionPause, SessionRecord } from '../rooms/room.model';
 import { RoomStore } from '../rooms/room.store';
 import { TimerScheduler, type TimerJob } from '../scheduler/timer.scheduler';
 import { RoomPublisher } from './room-publisher';
@@ -24,6 +25,10 @@ import { decideTimerReset, decisionWindowMs } from './timer-policy';
 
 /** A system action that finds its room locked is retried this soon: losing it would freeze the table. */
 const SYSTEM_RETRY_MS = 250;
+/** "Wait longer" at a paused table (core §2: +2 min). */
+export const PAUSE_EXTENSION_MS = 120_000;
+
+export type AbortReason = NonNullable<MatchResult['abortReason']>;
 
 /**
  * Owns the lifecycle of matches: start, authoritative action processing,
@@ -49,6 +54,7 @@ export class GameSessionsService implements OnModuleInit {
   onModuleInit(): void {
     this.scheduler.register('turn', (job) => this.onTurnTimer(job));
     this.scheduler.register('system', (job) => this.onSystemTimer(job));
+    this.scheduler.register('pause', (job) => this.onPauseTimer(job));
   }
 
   async start(room: RoomRecord, effects: Effects): Promise<void> {
@@ -61,10 +67,16 @@ export class GameSessionsService implements OnModuleInit {
     // Played with the account's chips: everyone brings theirs to the table.
     const wallets = module.getWallets ? await this.profiles.wallets(players) : undefined;
     const seed = generateSeed();
+    const seating = module.seating;
     const state = module.setup(players, config, createDrbgRng(seed), {
-      previousResult: room.lastResult ? { standings: room.lastResult.standings } : null,
+      previousResult: room.lastResult
+        ? { standings: room.lastResult.standings, summary: room.lastResult.summary }
+        : null,
       seats: members.map((m) => m.seat),
       wallets,
+      seating: seating
+        ? Object.fromEntries(members.map((m) => [seating.seats[m.seat] as string, m.id]))
+        : undefined,
     });
 
     const session: SessionRecord = {
@@ -134,13 +146,128 @@ export class GameSessionsService implements OnModuleInit {
     const away = this.awayIds(room);
     if (session.players.every((id) => away.has(id))) {
       if (module.lifecycle === 'MATCH') {
-        this.finish(room, effects, true);
+        this.finish(room, effects, true, 'ABANDONED');
         return;
       }
       this.requestEnd(room, module, effects);
       if (!room.session) return;
     }
+    // A table that pauses never plays for anyone: its clock stops and resumes with the pause.
+    if (module.disconnectPolicy === 'PAUSE') return;
     this.armTimer(room, module, effects);
+  }
+
+  /** Whether the room's chat takes messages now (some games close it while a hand is played). */
+  isChatOpen(room: RoomRecord): boolean {
+    const session = room.session;
+    if (!session) return true;
+    return this.registry.require(session.gameId).isChatOpen?.(session.state) ?? true;
+  }
+
+  /**
+   * A player of a match that pauses for its missing players dropped or left:
+   * the table stops, with its decision clock frozen, and waits for them
+   * (`getPauseGraceMs`). Other games: nothing (their players get a grace period).
+   */
+  playerAbsent(room: RoomRecord, userId: string, effects: Effects): void {
+    const session = room.session;
+    const module = session && this.registry.require(session.gameId);
+    if (!session || module?.disconnectPolicy !== 'PAUSE' || !session.players.includes(userId)) return;
+    if (module.isFinished(session.state) || session.pause?.playerIds.includes(userId)) return;
+    const now = Date.now();
+    const waitMs = module.getPauseGraceMs?.(session.state) ?? this.env.RECONNECT_GRACE_MS;
+    const frozen =
+      session.deadline !== null && session.timerTotalMs !== null
+        ? { remainingMs: Math.max(0, session.deadline - now), totalMs: session.timerTotalMs }
+        : null;
+    const pause: SessionPause = session.pause ?? {
+      playerIds: [],
+      until: 0,
+      totalMs: 0,
+      expired: false,
+      frozen,
+    };
+    pause.playerIds.push(userId);
+    // Everyone missing gets the whole wait, counted from when they went.
+    if (now + waitMs > pause.until) {
+      pause.until = now + waitMs;
+      pause.totalMs = waitMs;
+    }
+    pause.expired = false;
+    session.pause = pause;
+    this.apply(room, module, pauseActions.pause(userId), SYSTEM_PLAYER_ID, true, effects);
+    this.schedulePauseEnd(room, effects);
+  }
+
+  /** A missing player is back: once nobody is missing, the table goes on with the clock it had. */
+  playerReturned(room: RoomRecord, userId: string, effects: Effects): void {
+    const session = room.session;
+    const pause = session?.pause;
+    if (!session || !pause?.playerIds.includes(userId)) return;
+    const module = this.registry.require(session.gameId);
+    pause.playerIds = pause.playerIds.filter((id) => id !== userId);
+    if (pause.playerIds.length === 0) session.pause = null;
+    this.apply(room, module, pauseActions.resume(userId), SYSTEM_PLAYER_ID, true, effects);
+    if (room.session && !session.pause && pause.frozen && module.getTimeoutMs(session.state) !== null) {
+      this.armTimerFor(room, pause.frozen.remainingMs, pause.frozen.totalMs, effects);
+    }
+  }
+
+  /**
+   * The host of a table that waited long enough: wait 2 more minutes, or end
+   * the match without a result (it counts for nobody's stats).
+   */
+  decidePause(room: RoomRecord, userId: string, decision: 'WAIT' | 'END', effects: Effects): void {
+    requireHost(room, userId);
+    const pause = room.session?.pause;
+    if (!pause?.expired) throw new AppError(ErrorCode.NotPaused, 'The table is not waiting for a decision');
+    if (decision === 'END') {
+      this.finish(room, effects, true, 'HOST_ENDED');
+      return;
+    }
+    pause.until = Date.now() + PAUSE_EXTENSION_MS;
+    pause.totalMs = PAUSE_EXTENSION_MS;
+    pause.expired = false;
+    this.schedulePauseEnd(room, effects);
+    this.deferViews(room, effects);
+  }
+
+  private schedulePauseEnd(room: RoomRecord, effects: Effects): void {
+    const session = this.requireSession(room);
+    const pause = session.pause;
+    if (!pause) return;
+    session.pauseToken = (session.pauseToken ?? 0) + 1;
+    const job: TimerJob = {
+      kind: 'pause',
+      roomId: room.id,
+      token: `${session.matchId}:${session.pauseToken}`,
+    };
+    const dueAt = pause.until;
+    effects.defer(() => this.scheduler.schedule(job, dueAt));
+  }
+
+  /**
+   * The wait is over: the host decides — unless the host is the one missing
+   * (or gone), and then nobody can: the match ends without a result.
+   */
+  private async onPauseTimer(job: TimerJob): Promise<void> {
+    await this.store
+      .mutate(job.roomId, (room, effects) => {
+        const session = room.session;
+        const pause = session?.pause;
+        if (!session || !pause || job.token !== `${session.matchId}:${session.pauseToken ?? 0}`) return;
+        const host = findMember(room, room.hostId);
+        if (!host || host.left || pause.playerIds.includes(room.hostId)) {
+          this.finish(room, effects, true, 'ABANDONED');
+          return;
+        }
+        pause.expired = true;
+        this.deferViews(room, effects);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof AppError && error.code === ErrorCode.RoomNotFound) return;
+        throw error;
+      });
   }
 
   /**
@@ -199,6 +326,21 @@ export class GameSessionsService implements OnModuleInit {
     const session = room.session;
     const module = session && this.registry.require(session.gameId);
     if (module?.lifecycle === 'SESSION') this.requestEnd(room, module, effects);
+  }
+
+  /**
+   * The host left mid-game. A table that pauses for its missing players
+   * cannot go on (nobody would ever decide for it): the match ends at once,
+   * without a result. Any other game wraps up as when the room closes.
+   */
+  hostLeft(room: RoomRecord, effects: Effects): void {
+    const session = room.session;
+    const module = session && this.registry.require(session.gameId);
+    if (module?.disconnectPolicy === 'PAUSE') {
+      this.finish(room, effects, true, 'ABANDONED');
+      return;
+    }
+    this.wrapUp(room, effects);
   }
 
   private requestEnd(room: RoomRecord, module: AnyGameModule, effects: Effects): void {
@@ -322,6 +464,22 @@ export class GameSessionsService implements OnModuleInit {
     effects.deferLatest('views', () => this.publisher.publishViews(room, { snapshot: false }));
   }
 
+  /** A decision clock that picks up where a pause stopped it. */
+  private armTimerFor(room: RoomRecord, remainingMs: number, totalMs: number, effects: Effects): void {
+    const session = this.requireSession(room);
+    session.timerToken += 1;
+    session.deadline = Date.now() + remainingMs;
+    session.timerTotalMs = totalMs;
+    const job: TimerJob = {
+      kind: 'turn',
+      roomId: room.id,
+      token: `${session.matchId}:${session.timerToken}`,
+    };
+    const dueAt = session.deadline;
+    effects.defer(() => this.scheduler.schedule(job, dueAt));
+    this.deferViews(room, effects);
+  }
+
   /** Sets a fresh deadline for the current decision and schedules its timer. */
   private armTimer(room: RoomRecord, module: AnyGameModule, effects: Effects): void {
     const session = this.requireSession(room);
@@ -396,10 +554,11 @@ export class GameSessionsService implements OnModuleInit {
     }
   }
 
-  private finish(room: RoomRecord, effects: Effects, abandoned: boolean): void {
+  private finish(room: RoomRecord, effects: Effects, abandoned: boolean, reason?: AbortReason): void {
     const session = this.requireSession(room);
     const module = this.registry.require(session.gameId);
-    const standings = abandoned ? [] : [...module.getResult(session.state).standings];
+    const gameResult = abandoned ? null : module.getResult(session.state);
+    const standings = gameResult ? [...gameResult.standings] : [];
     // A session ended before anyone played a round has no result: it counts as aborted.
     const aborted = abandoned || standings.length === 0;
     const names = new Map([
@@ -410,6 +569,8 @@ export class GameSessionsService implements OnModuleInit {
       matchId: session.matchId,
       aborted,
       standings: standings.map((s) => ({ ...s, username: names.get(s.playerId) ?? '—' })),
+      ...(aborted && reason ? { abortReason: reason } : {}),
+      ...(!aborted && gameResult?.summary ? { summary: gameResult.summary } : {}),
     };
 
     // Players receive the final view before the room returns to the lobby.

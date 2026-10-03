@@ -24,6 +24,7 @@
     "@cardroom/olho": "workspace:*",
     "@cardroom/peixinho": "workspace:*",
     "@cardroom/shared": "workspace:*",
+    "@cardroom/sueca": "workspace:*",
     "@cardroom/ui": "workspace:*",
     "clsx": "^2.1.1",
     "firebase": "^12.19.0",

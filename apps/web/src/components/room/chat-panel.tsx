@@ -8,7 +8,8 @@ import { useRoomCommands } from '@/lib/realtime/socket-provider';
 import { useRealtime } from '@/lib/realtime/store';
 import { toast } from '@/lib/toast';
 
-export function ChatPanel({ className }: { className?: string }) {
+/** `locked`: the game closed the chat for now (Sueca, while a hand is played). */
+export function ChatPanel({ className, locked = false }: { className?: string; locked?: boolean }) {
   const profile = useProfile();
   const chat = useRealtime((s) => s.chat);
   const markRead = useRealtime((s) => s.markChatRead);
@@ -24,7 +25,7 @@ export function ChatPanel({ className }: { className?: string }) {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     const message = text.trim();
-    if (!message) return;
+    if (!message || locked) return;
     setText('');
     const ack = await sendChat(message);
     if (!ack.ok) {
@@ -64,13 +65,14 @@ export function ChatPanel({ className }: { className?: string }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           maxLength={300}
-          placeholder="Escreve uma mensagem…"
+          placeholder={locked ? '🔒 O chat abre no fim da mão' : 'Escreve uma mensagem…'}
+          disabled={locked}
           autoComplete="off"
-          className="h-10 min-w-0 flex-1 rounded-xl border border-line-strong bg-ink/60 px-3 text-sm outline-none focus:border-gold/70"
+          className="h-10 min-w-0 flex-1 rounded-xl border border-line-strong bg-ink/60 px-3 text-sm outline-none focus:border-gold/70 disabled:opacity-60"
         />
         <button
           type="submit"
-          disabled={!text.trim()}
+          disabled={locked || !text.trim()}
           className="h-10 rounded-xl bg-gold px-4 text-sm font-semibold text-gold-ink disabled:opacity-40"
         >
           Enviar

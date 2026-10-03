@@ -8,6 +8,7 @@ import { gringo } from '@cardroom/gringo';
 import { mexicana } from '@cardroom/mexicana';
 import { olho } from '@cardroom/olho';
 import { peixinho } from '@cardroom/peixinho';
+import { sueca } from '@cardroom/sueca';
 import { BlackjackTable } from './blackjack/table';
 import { DesconfiaTable } from './desconfia/table';
 import { FodinhaTable } from './fodinha/table';
@@ -16,15 +17,29 @@ import { GringoTable } from './gringo/table';
 import { MexicanaTable } from './mexicana/table';
 import { OlhoTable } from './olho/table';
 import { PeixinhoTable } from './peixinho/table';
-import type { GameClientDefinition, GameRules } from './types';
+import { SEAT_LABEL, TEAM_COLOR, TEAM_NAME } from './sueca/copy';
+import { SuecaResultDetails } from './sueca/results';
+import { SuecaTable } from './sueca/table';
+import type { GameClientDefinition, GameRules, SeatingPresentation } from './types';
 
 type Presentation = Pick<
   GameClientDefinition,
-  'tagline' | 'defaultMaxPlayers' | 'resultStyle' | 'resultDelayMs' | 'scoreUnit' | 'resultNote' | 'Table'
->;
+  | 'tagline'
+  | 'defaultMaxPlayers'
+  | 'resultStyle'
+  | 'resultDelayMs'
+  | 'scoreUnit'
+  | 'resultNote'
+  | 'ResultDetails'
+  | 'Table'
+> & {
+  /** Names and colours of the seats, for games whose module declares them. */
+  seats?: Pick<SeatingPresentation, 'labels' | 'teamNames' | 'teamColors'>;
+};
 
 /** Rules, player counts and settings come from the game's own module; the client adds the looks. */
-function define(rules: GameRules, presentation: Presentation): GameClientDefinition {
+function define(rules: GameRules, { seats, ...presentation }: Presentation): GameClientDefinition {
+  const seating = rules.seating;
   return {
     id: rules.id,
     name: rules.name,
@@ -34,6 +49,8 @@ function define(rules: GameRules, presentation: Presentation): GameClientDefinit
     settings: rules.configUi,
     defaults: rules.configSchema.parse({}) as Record<string, ConfigValue>,
     validateTable: (config, playerCount) => rules.validateTable?.(config as never, playerCount) ?? null,
+    seating: seating && seats ? { seats: seating.seats, teams: seating.teams ?? {}, ...seats } : undefined,
+    pausesForMissing: rules.disconnectPolicy === 'PAUSE',
     ...presentation,
   };
 }
@@ -102,6 +119,18 @@ export const GAME_CLIENTS: GameClientDefinition[] = [
     scoreUnit: ['ponto', 'pontos'],
     resultNote: 'Ganha quem tiver menos pontos; os empates partilham o lugar.',
     Table: GringoTable,
+  }),
+  define(sueca, {
+    tagline:
+      'Dois contra dois, parceiros frente a frente: 40 cartas, trunfo e obrigação de assistir. Cada mão, a equipa que fizer mais de 60 pontos ganha jogos.',
+    defaultMaxPlayers: 4,
+    resultStyle: 'teams',
+    // The last trick goes to its pile and the hand is summed up first.
+    resultDelayMs: 2600,
+    scoreUnit: ['jogo', 'jogos'],
+    seats: { labels: SEAT_LABEL, teamNames: TEAM_NAME, teamColors: TEAM_COLOR },
+    ResultDetails: SuecaResultDetails,
+    Table: SuecaTable,
   }),
   // define(highCard, {
   //   tagline: 'Um aquecimento rápido: a carta mais alta ganha a ronda.',

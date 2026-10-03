@@ -10,9 +10,10 @@ import { REDIS } from '../redis/redis.module';
 
 /**
  * `turn`: decision deadline · `grace`: reconnect window · `system`: engine-scheduled
- * action · `expire`: a room reaching its maximum age.
+ * action · `expire`: a room reaching its maximum age · `pause`: a paused table has
+ * waited long enough for its missing players.
  */
-export type TimerKind = 'turn' | 'grace' | 'system' | 'expire';
+export type TimerKind = 'turn' | 'grace' | 'system' | 'expire' | 'pause';
 
 export interface TimerJob {
   kind: TimerKind;

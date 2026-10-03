@@ -13,12 +13,15 @@ import {
   ClientEvent,
   ErrorCode,
   gameActionSchema,
+  gamePauseDecisionSchema,
   roomChatSchema,
   roomConfigureSchema,
   roomCreateSchema,
   roomJoinSchema,
   roomKickSchema,
   roomReadySchema,
+  roomSeatSchema,
+  roomSwapSeatsSchema,
   voiceSetSchema,
   voiceSignalSchema,
   type Ack,
@@ -171,6 +174,33 @@ export class GameGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   chat(@ConnectedSocket() socket: GameSocket, @MessageBody() body: unknown): Promise<Ack<void>> {
     if (!socket.data.limits.chat.tryTake()) return Promise.resolve(this.rateLimited());
     return this.handle(socket, () => this.rooms.chat(socket.data.profile, roomChatSchema.parse(body).text));
+  }
+
+  @SubscribeMessage(ClientEvent.RoomSeat)
+  takeSeat(@ConnectedSocket() socket: GameSocket, @MessageBody() body: unknown): Promise<Ack<void>> {
+    return this.handle(socket, () =>
+      this.rooms.takeSeat(socket.data.profile.id, roomSeatSchema.parse(body).seat),
+    );
+  }
+
+  @SubscribeMessage(ClientEvent.RoomSwapSeats)
+  swapSeats(@ConnectedSocket() socket: GameSocket, @MessageBody() body: unknown): Promise<Ack<void>> {
+    return this.handle(socket, () => {
+      const { a, b } = roomSwapSeatsSchema.parse(body);
+      return this.rooms.swapSeats(socket.data.profile.id, a, b);
+    });
+  }
+
+  @SubscribeMessage(ClientEvent.RoomShuffleSeats)
+  shuffleSeats(@ConnectedSocket() socket: GameSocket): Promise<Ack<void>> {
+    return this.handle(socket, () => this.rooms.shuffleSeats(socket.data.profile.id));
+  }
+
+  @SubscribeMessage(ClientEvent.GamePauseDecision)
+  decidePause(@ConnectedSocket() socket: GameSocket, @MessageBody() body: unknown): Promise<Ack<void>> {
+    return this.handle(socket, () =>
+      this.rooms.decidePause(socket.data.profile.id, gamePauseDecisionSchema.parse(body).decision),
+    );
   }
 
   @SubscribeMessage(ClientEvent.GameAction)

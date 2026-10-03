@@ -32,8 +32,15 @@ export interface MatchResult {
   matchId: string;
   /** Every player, best first (empty when aborted). */
   standings: PlayerStanding[];
-  /** `true` when the match ended because every remaining player was away. */
+  /** `true` when the match ended without a result (it does not count for anyone's stats). */
   aborted: boolean;
+  /**
+   * Why an aborted match ended: every remaining player was away, or — in games
+   * that pause for a missing player — the host ended it. Absent on older results.
+   */
+  abortReason?: 'ABANDONED' | 'HOST_ENDED';
+  /** Game-specific extras of the result (e.g. Sueca's hands), for display only. */
+  summary?: Record<string, unknown>;
 }
 
 export interface RoomState {
@@ -78,6 +85,19 @@ export interface TurnTimer {
   playerIds: string[];
 }
 
+/**
+ * A table waiting for players who dropped (games that pause instead of playing
+ * for them). Timers are frozen meanwhile and pick up where they were.
+ */
+export interface GamePause {
+  playerIds: string[];
+  /** How long the table still waits, measured on the server when the message was emitted. */
+  remainingMs: number;
+  totalMs: number;
+  /** The wait is over: the host chooses to wait longer or to end the match without a result. */
+  expired: boolean;
+}
+
 export interface GameViewMessage<View = unknown, Action = unknown> {
   roomId: string;
   matchId: string;
@@ -88,6 +108,9 @@ export interface GameViewMessage<View = unknown, Action = unknown> {
   timer: TurnTimer | null;
   /** Full resync (join/reconnect): render without animating from the previous view. */
   snapshot: boolean;
+  /** The room's chat takes messages (some games close it while a hand is played). */
+  chatOpen: boolean;
+  pause: GamePause | null;
 }
 
 export interface GameEventsMessage<Event extends DomainEvent = DomainEvent> {

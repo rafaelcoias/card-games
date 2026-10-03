@@ -48,6 +48,14 @@ export interface RoomCommands {
   kick: (playerId: string) => Promise<Ack>;
   sendChat: (text: string) => Promise<Ack>;
   sendAction: (action: unknown) => Promise<Ack>;
+  /** Games with named seats, in the room: sit in a free seat. */
+  takeSeat: (seat: number) => Promise<Ack>;
+  /** Host, in the room: swaps whoever sits in two seats. */
+  swapSeats: (a: number, b: number) => Promise<Ack>;
+  /** Host, in the room: draws everyone's seat. */
+  shuffleSeats: () => Promise<Ack>;
+  /** Host of a table paused for too long: wait longer, or end the match without a result. */
+  decidePause: (decision: 'WAIT' | 'END') => Promise<Ack>;
   /** Microphone on/off in the room's voice chat. */
   setVoice: (enabled: boolean) => Promise<Ack>;
   getVoiceConfig: () => Promise<Ack<VoiceConfig>>;
@@ -159,6 +167,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       kick: (playerId) => call(() => timed().emitWithAck('room:kick', { playerId })),
       sendChat: (text) => call(() => timed().emitWithAck('room:chat', { text })),
       sendAction: (action) => call(() => timed().emitWithAck('game:action', { action })),
+      takeSeat: (seat) => call(() => timed().emitWithAck('room:seat', { seat })),
+      swapSeats: (a, b) => call(() => timed().emitWithAck('room:swap-seats', { a, b })),
+      shuffleSeats: () => call(() => timed().emitWithAck('room:shuffle-seats')),
+      decidePause: (decision) => call(() => timed().emitWithAck('game:pause-decision', { decision })),
       setVoice: (enabled) => call(() => timed().emitWithAck('voice:set', { enabled })),
       getVoiceConfig: () => call(() => timed().emitWithAck('voice:config')),
       sendVoiceSignal: (signal) => {

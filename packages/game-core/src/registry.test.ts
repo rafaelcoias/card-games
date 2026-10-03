@@ -53,6 +53,34 @@ describe('GameRegistry', () => {
     expect(module.getSeatedPlayers?.({ value: 0 })).toEqual(['p1']);
   });
 
+  it('checks named seats against the table size and the teams', () => {
+    const teamGame = {
+      ...counterGame,
+      id: 'teams',
+      minPlayers: 4,
+      maxPlayers: 4,
+      seating: { seats: ['S', 'E', 'N', 'W'], teams: { A: ['S', 'N'], B: ['E', 'W'] } },
+    };
+    expect(new GameRegistry().register(teamGame).require('teams').seating?.seats).toHaveLength(4);
+    expect(() => new GameRegistry().register({ ...teamGame, minPlayers: 2 })).toThrow(/exactly 4/);
+    expect(() =>
+      new GameRegistry().register({ ...teamGame, seating: { seats: ['S', 'S', 'N', 'W'] } }),
+    ).toThrow(/duplicate/);
+    expect(() =>
+      new GameRegistry().register({
+        ...teamGame,
+        seating: { seats: ['S', 'E', 'N', 'W'], teams: { A: ['S', 'N'], B: ['E'] } },
+      }),
+    ).toThrow(/exactly one team/);
+  });
+
+  it('only pauses matches for a missing player', () => {
+    const paused = { ...counterGame, id: 'paused', disconnectPolicy: 'PAUSE' as const };
+    expect(new GameRegistry().register(paused).require('paused').disconnectPolicy).toBe('PAUSE');
+    const session = { ...paused, lifecycle: 'SESSION' as const, getSeatedPlayers: () => [] };
+    expect(() => new GameRegistry().register(session)).toThrow(/Only MATCH games/);
+  });
+
   it('exposes type-erased modules that still work', () => {
     const module = new GameRegistry().register(counterGame).require('counter');
     const state = module.setup(['p1'], {}, { nextInt: () => 0 });

@@ -18,6 +18,10 @@ const MESSAGES: Record<string, string> = {
   CANNOT_KICK: 'Durante a partida só podes remover jogadores desligados.',
   GAME_NOT_RUNNING: 'A partida já terminou.',
   USERNAME_TAKEN: 'Esse nome de utilizador já está a ser usado.',
+  NO_SEATING: 'Neste jogo os lugares seguem a ordem de chegada.',
+  SEATS_MISSING: 'Todos os lugares da mesa têm de estar ocupados.',
+  CHAT_CLOSED: 'O chat abre no fim da mão.',
+  NOT_PAUSED: 'A mesa já não está à espera de uma decisão.',
   BUSY: 'O servidor está ocupado, tenta de novo.',
   NETWORK: 'Sem ligação ao servidor.',
   INTERNAL: 'Algo correu mal. Tenta de novo.',
@@ -103,6 +107,12 @@ const MESSAGES: Record<string, string> = {
   SNAP_CLOSED: 'Tarde demais: já não se pode bater nessa carta.',
   SNAP_TAKEN: 'Alguém bateu primeiro.',
   STALE_WINDOW: 'Essa janela já fechou.',
+  // Sueca engine
+  NOT_CUTTER: 'Quem corta é outro jogador.',
+  MUST_FOLLOW_SUIT: 'Tens de assistir ao naipe.',
+  NO_LAST_TRICK: 'Ainda não há nenhuma vaza fechada.',
+  LAST_TRICK_USED: 'Já viste a última vaza nesta mão.',
+  PAUSED: 'A mesa está à espera de um jogador.',
 };
 
 export function describeError(error: ErrorPayload): string {

@@ -48,6 +48,22 @@ export interface SessionRecord {
    * written to its profile, so only what changed is written again.
    */
   wallets?: Record<string, number>;
+  /** Games that pause for a missing player: the table is waiting (absent on older records). */
+  pause?: SessionPause | null;
+  /** Bumped whenever the pause's deadline changes, so stale pause timers can be ignored. */
+  pauseToken?: number;
+}
+
+export interface SessionPause {
+  /** Who the table waits for. */
+  playerIds: string[];
+  /** When the wait is over and the host may decide. */
+  until: number;
+  totalMs: number;
+  /** The wait is over: the host chooses to wait longer or to end the match. */
+  expired: boolean;
+  /** The decision clock that was running when the table stopped; it picks up from here. */
+  frozen: { remainingMs: number; totalMs: number } | null;
 }
 
 /** Everything the server knows about a live room. Stored as one Redis value. */

@@ -27,6 +27,14 @@ export const roomKickSchema = z.strictObject({ playerId: z.string().min(1).max(6
 export const roomChatSchema = z.strictObject({ text: z.string().trim().min(1).max(300) });
 export const gameActionSchema = z.strictObject({ action: z.unknown() });
 
+const seatIndex = z.number().int().min(0).max(9);
+/** Games with named seats: sit in a free seat. */
+export const roomSeatSchema = z.strictObject({ seat: seatIndex });
+/** Host: swaps whoever sits in two seats (either may be free). */
+export const roomSwapSeatsSchema = z.strictObject({ a: seatIndex, b: seatIndex });
+/** Host, once a paused table has waited long enough. */
+export const gamePauseDecisionSchema = z.strictObject({ decision: z.enum(['WAIT', 'END']) });
+
 export const voiceSetSchema = z.strictObject({ enabled: z.boolean() });
 
 /** A WebRTC offer/answer or ICE candidate, relayed as-is to one other member of the room. */
@@ -68,6 +76,9 @@ export type RoomReadyPayload = z.input<typeof roomReadySchema>;
 export type RoomKickPayload = z.input<typeof roomKickSchema>;
 export type RoomChatPayload = z.input<typeof roomChatSchema>;
 export type GameActionPayload = z.input<typeof gameActionSchema>;
+export type RoomSeatPayload = z.input<typeof roomSeatSchema>;
+export type RoomSwapSeatsPayload = z.input<typeof roomSwapSeatsSchema>;
+export type GamePauseDecisionPayload = z.input<typeof gamePauseDecisionSchema>;
 export type VoiceSetPayload = z.input<typeof voiceSetSchema>;
 export type VoiceSignalPayload = z.output<typeof voiceSignalSchema>;
 /** A relayed signal, as received from `from`. */

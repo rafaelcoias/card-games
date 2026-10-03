@@ -21,6 +21,8 @@ export interface Card {
 export interface DeckOptions {
   /** 0 → 52-card deck, 2 → 54-card deck. */
   readonly jokers: 0 | 2;
+  /** Ranks left out of every suit (e.g. 8, 9 and 10 for the 40-card deck of Sueca). */
+  readonly excludeRanks?: readonly StandardRank[];
 }
 
 export function cardId(rank: StandardRank, suit: Suit): CardId {
@@ -28,9 +30,11 @@ export function cardId(rank: StandardRank, suit: Suit): CardId {
 }
 
 export function createDeck(options: DeckOptions): Card[] {
+  const excluded = new Set<StandardRank>(options.excludeRanks ?? []);
   const deck: Card[] = [];
   for (const suit of SUITS) {
     for (const rank of STANDARD_RANKS) {
+      if (excluded.has(rank)) continue;
       deck.push({ id: cardId(rank, suit), rank, suit });
     }
   }
@@ -53,12 +57,14 @@ export interface ShoeOptions {
   readonly decks: number;
   /** Jokers per deck (default none). */
   readonly jokers?: DeckOptions['jokers'];
+  /** Ranks left out of every deck. */
+  readonly excludeRanks?: DeckOptions['excludeRanks'];
 }
 
 /** `decks` complete decks, one after the other and unshuffled. */
-export function createShoe({ decks, jokers = 0 }: ShoeOptions): CardInstance[] {
+export function createShoe({ decks, jokers = 0, excludeRanks }: ShoeOptions): CardInstance[] {
   if (!Number.isInteger(decks) || decks < 1) throw new RangeError(`A shoe needs 1+ decks, got ${decks}`);
-  const deck = createDeck({ jokers });
+  const deck = createDeck({ jokers, excludeRanks });
   return Array.from({ length: decks }, (_, index) =>
     deck.map((card) => ({ ...card, uid: `${card.id}#${index}` })),
   ).flat();

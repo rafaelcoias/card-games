@@ -8,6 +8,7 @@ import { gringo } from '@cardroom/gringo';
 import { mexicana } from '@cardroom/mexicana';
 import { olho } from '@cardroom/olho';
 import { peixinho } from '@cardroom/peixinho';
+import { sueca } from '@cardroom/sueca';
 
 /**
  * Composition root for games: the only place that knows concrete modules.
@@ -15,7 +16,7 @@ import { peixinho } from '@cardroom/peixinho';
  */
 export function createGameRegistry(): GameRegistry {
   const registry = new GameRegistry().register(mexicana).register(fodinha).register(blackjack);
-  registry.register(peixinho).register(desconfia).register(olho).register(gringo);
+  registry.register(peixinho).register(desconfia).register(olho).register(gringo).register(sueca);
   // registry.register(highCard);
   return registry;
 }

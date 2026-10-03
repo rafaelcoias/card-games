@@ -1,6 +1,6 @@
 'use client';
 
-import type { RoomPlayer, RoomState } from '@cardroom/shared';
+import type { PlayerStanding, RoomPlayer, RoomState } from '@cardroom/shared';
 import clsx from 'clsx';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -19,6 +19,7 @@ import { toast } from '@/lib/toast';
 import { PlayerLink } from '@/components/players/player-link';
 import { ChatPanel } from './chat-panel';
 import { MicButton, MicIcon } from './mic-button';
+import { SeatPicker } from './seat-picker';
 
 export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string }) {
   const router = useRouter();
@@ -85,18 +86,22 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
         {room.lastResult && room.lastResult.standings.length > 0 && (
           <div className="panel flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3 text-sm">
             <span className="font-semibold text-gold">Última partida</span>
-            {room.lastResult.standings.map((s) => (
-              <span key={s.playerId} className={s.outcome === 'LOSER' ? 'text-danger' : 'text-ivory/85'}>
-                {s.position !== undefined ? (
-                  <span className="tabular-nums text-subtle">{s.position}.º </span>
-                ) : null}
-                {s.username}
-                {s.score !== undefined && (
-                  <span className="tabular-nums text-subtle"> · {formatScore(game, s.score)}</span>
-                )}
-                {s.position === undefined && s.outcome === 'LOSER' && ' · perdeu'}
-              </span>
-            ))}
+            {game?.resultStyle === 'teams' ? (
+              <TeamsResult standings={room.lastResult.standings} />
+            ) : (
+              room.lastResult.standings.map((s) => (
+                <span key={s.playerId} className={s.outcome === 'LOSER' ? 'text-danger' : 'text-ivory/85'}>
+                  {s.position !== undefined ? (
+                    <span className="tabular-nums text-subtle">{s.position}.º </span>
+                  ) : null}
+                  {s.username}
+                  {s.score !== undefined && (
+                    <span className="tabular-nums text-subtle"> · {formatScore(game, s.score)}</span>
+                  )}
+                  {s.position === undefined && s.outcome === 'LOSER' && ' · perdeu'}
+                </span>
+              ))
+            )}
           </div>
         )}
 
@@ -116,25 +121,38 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
               </p>
             )}
           </div>
-          <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-            {seats.map((player, seat) => (
-              <li key={seat}>
-                {player ? (
-                  <PlayerRow
-                    player={player}
-                    isHost={player.id === room.hostId}
-                    isSelf={player.id === selfId}
-                    canKick={isHost && player.id !== selfId}
-                    onKick={() => void run(`kick-${player.id}`, () => commands.kick(player.id))}
-                  />
-                ) : (
-                  <div className="flex h-[60px] items-center rounded-xl border border-dashed border-line-strong px-4 text-sm text-subtle">
-                    Lugar livre
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
+          {game?.seating ? (
+            <div className="mt-4">
+              <SeatPicker
+                room={room}
+                selfId={selfId}
+                seating={game.seating}
+                isHost={isHost}
+                onKick={(player) => void run(`kick-${player.id}`, () => commands.kick(player.id))}
+                commands={commands}
+              />
+            </div>
+          ) : (
+            <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+              {seats.map((player, seat) => (
+                <li key={seat}>
+                  {player ? (
+                    <PlayerRow
+                      player={player}
+                      isHost={player.id === room.hostId}
+                      isSelf={player.id === selfId}
+                      canKick={isHost && player.id !== selfId}
+                      onKick={() => void run(`kick-${player.id}`, () => commands.kick(player.id))}
+                    />
+                  ) : (
+                    <div className="flex h-[60px] items-center rounded-xl border border-dashed border-line-strong px-4 text-sm text-subtle">
+                      Lugar livre
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -280,5 +298,20 @@ function SettingsSummary({ room, game }: { room: RoomState; game: GameClientDefi
         </span>
       ))}
     </div>
+  );
+}
+
+/** A match won by a pair: "Ganharam Ana e Carla · 4–2". */
+function TeamsResult({ standings }: { standings: readonly PlayerStanding[] }) {
+  const winners = standings.filter((s) => s.outcome === 'WINNER');
+  const losers = standings.filter((s) => s.outcome === 'LOSER');
+  return (
+    <span className="text-ivory/85">
+      Ganharam {winners.map((s) => s.username).join(' e ')}
+      <span className="tabular-nums text-subtle">
+        {' '}
+        · {winners[0]?.score ?? 0}–{losers[0]?.score ?? 0}
+      </span>
+    </span>
   );
 }

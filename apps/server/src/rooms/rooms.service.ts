@@ -34,7 +34,10 @@ import {
   removeMember,
   requireHost,
   requireMember,
+  shuffleSeats,
   startsByItself,
+  swapSeats,
+  takeSeat,
   type MemberProfile,
 } from './room.logic';
 import { ROOM_MAX_AGE_MS, type RoomRecord } from './room.model';
@@ -124,6 +127,7 @@ export class RoomsService implements OnModuleInit {
       this.emitter.subscribeUserToRoom(user.id, room.id);
       // A running session table seats newcomers, and takes back whoever had got up.
       if (!existing || returning) await this.sessions.seatPlayer(room, member, effects);
+      if (existing) this.sessions.playerReturned(room, user.id, effects);
       if (existing) this.sessions.onPresenceChanged(room, effects);
       this.sessions.sendSnapshot(room, user.id, effects);
       effects.defer(() => this.publisher.publishRoom(room));
@@ -146,7 +150,8 @@ export class RoomsService implements OnModuleInit {
       if (room.status !== 'OPEN') throw new AppError(ErrorCode.RoomInProgress, 'The match already started');
       requireMember(room, userId).ready = ready;
       const module = this.registry.require(room.gameId);
-      if (startsByItself(room, module.minPlayers, Math.min(module.maxPlayers, room.maxPlayers))) {
+      const max = Math.min(module.maxPlayers, room.maxPlayers);
+      if (startsByItself(room, module.minPlayers, max, module.seating?.seats.length)) {
         await this.sessions.start(room, effects);
         this.logger.log({ roomId: room.id, players: room.members.length }, 'Rematch started');
         return;
@@ -172,7 +177,8 @@ export class RoomsService implements OnModuleInit {
   async start(userId: string): Promise<void> {
     await this.mutateCurrent(userId, async (room, effects) => {
       const module = this.registry.require(room.gameId);
-      assertCanStart(room, userId, module.minPlayers, Math.min(module.maxPlayers, room.maxPlayers));
+      const max = Math.min(module.maxPlayers, room.maxPlayers);
+      assertCanStart(room, userId, module.minPlayers, max, module.seating?.seats.length);
       await this.sessions.start(room, effects);
       this.logger.log({ roomId: room.id, players: room.members.length }, 'Match started');
     });
@@ -184,6 +190,38 @@ export class RoomsService implements OnModuleInit {
       requireHost(room, userId);
       this.sessions.endSession(room, effects);
       this.logger.log({ roomId: room.id }, 'Session end requested');
+    });
+  }
+
+  /** Games with named seats, in the lobby: sit in a free seat (and so pick a partner). */
+  async takeSeat(userId: string, seat: number): Promise<void> {
+    await this.mutateCurrent(userId, (room, effects) => {
+      takeSeat(room, userId, seat, this.seatCount(room));
+      effects.defer(() => this.publisher.publishRoom(room));
+    });
+  }
+
+  /** Host, in the lobby: swaps whoever sits in two seats. */
+  async swapSeats(hostId: string, a: number, b: number): Promise<void> {
+    await this.mutateCurrent(hostId, (room, effects) => {
+      swapSeats(room, hostId, a, b, this.seatCount(room));
+      effects.defer(() => this.publisher.publishRoom(room));
+    });
+  }
+
+  /** Host, in the lobby: everyone's seat (and partner) is drawn. */
+  async shuffleSeats(hostId: string): Promise<void> {
+    await this.mutateCurrent(hostId, (room, effects) => {
+      shuffleSeats(room, hostId, this.seatCount(room), randomInt);
+      effects.defer(() => this.publisher.publishRoom(room));
+    });
+  }
+
+  /** Host of a table that waited long enough for a missing player: wait longer, or end it without a result. */
+  async decidePause(hostId: string, decision: 'WAIT' | 'END'): Promise<void> {
+    await this.mutateCurrent(hostId, (room, effects) => {
+      this.sessions.decidePause(room, hostId, decision, effects);
+      this.logger.log({ roomId: room.id, decision }, 'Paused table decided');
     });
   }
 
@@ -199,6 +237,10 @@ export class RoomsService implements OnModuleInit {
   async chat(user: MemberProfile, text: string): Promise<void> {
     await this.mutateCurrent(user.id, (room, effects) => {
       requireMember(room, user.id);
+      // Some games close the chat while a hand is played (partners must not signal): refused here, not just hidden.
+      if (!this.sessions.isChatOpen(room)) {
+        throw new AppError(ErrorCode.ChatClosed, 'The chat opens at the end of the hand');
+      }
       const message = { id: randomUUID(), playerId: user.id, username: user.username, text, at: Date.now() };
       appendChat(room, message);
       effects.defer(() => this.emitter.toRoom(room.id, 'room:chat', message));
@@ -241,6 +283,7 @@ export class RoomsService implements OnModuleInit {
         const wasAway = member.away;
         markPresent(member);
         this.emitter.subscribeUserToRoom(userId, room.id);
+        this.sessions.playerReturned(room, userId, effects);
         if (wasAway) this.sessions.onPresenceChanged(room, effects);
         effects.defer(() => this.emitter.toUser(userId, 'room:state', this.publisher.roomState(room)));
         effects.defer(() => this.publisher.publishRoom(room));
@@ -273,6 +316,8 @@ export class RoomsService implements OnModuleInit {
         const job: TimerJob = { kind: 'grace', roomId, token: `${userId}:${member.disconnectedAt}` };
         const dueAt = member.disconnectedAt + graceMs;
         effects.defer(() => this.scheduler.schedule(job, dueAt));
+        // Games that need every player stop until they are back.
+        if (inMatch) this.sessions.playerAbsent(room, userId, effects);
         effects.defer(() => this.publisher.publishRoom(room));
         effects.defer(() => this.emitter.toRoom(room.id, 'player:disconnected', { playerId: userId }));
       })
@@ -355,7 +400,8 @@ export class RoomsService implements OnModuleInit {
       return;
     }
     this.sessions.releasePlayer(room, userId, effects);
-    if (wasHost) this.sessions.wrapUp(room, effects);
+    if (wasHost) this.sessions.hostLeft(room, effects);
+    this.sessions.playerAbsent(room, userId, effects);
     if (room.status === 'OPEN' && isEmpty(room)) room.status = 'CLOSED';
     this.sessions.onPresenceChanged(room, effects);
 
@@ -417,6 +463,13 @@ export class RoomsService implements OnModuleInit {
       maxPlayers: input.maxPlayers,
       config: parsedConfig.data as Record<string, unknown>,
     };
+  }
+
+  /** Named seats of the room's game; refused for games whose seats just follow arrival. */
+  private seatCount(room: RoomRecord): number {
+    const seating = this.registry.require(room.gameId).seating;
+    if (!seating) throw new AppError(ErrorCode.NoSeating, 'Players do not choose seats in this game');
+    return seating.seats.length;
   }
 
   private async mutateCurrent(

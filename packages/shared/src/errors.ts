@@ -17,6 +17,11 @@ export const ErrorCode = {
   GameNotRunning: 'GAME_NOT_RUNNING',
   CannotEnd: 'CANNOT_END',
   UsernameTaken: 'USERNAME_TAKEN',
+  SeatTaken: 'SEAT_TAKEN',
+  NoSeating: 'NO_SEATING',
+  SeatsMissing: 'SEATS_MISSING',
+  ChatClosed: 'CHAT_CLOSED',
+  NotPaused: 'NOT_PAUSED',
   Busy: 'BUSY',
   Internal: 'INTERNAL',
 } as const;

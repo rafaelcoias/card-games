@@ -54,6 +54,7 @@ export class RoomPublisher {
   ): GameViewMessage {
     const module = this.registry.require(session.gameId);
     const pending = module.getPendingPlayers(session.state);
+    const pause = session.pause;
     return {
       roomId,
       matchId: session.matchId,
@@ -70,6 +71,15 @@ export class RoomPublisher {
             }
           : null,
       snapshot,
+      chatOpen: module.isChatOpen?.(session.state) ?? true,
+      pause: pause
+        ? {
+            playerIds: [...pause.playerIds],
+            remainingMs: Math.max(0, pause.until - Date.now()),
+            totalMs: pause.totalMs,
+            expired: pause.expired,
+          }
+        : null,
     };
   }
 }

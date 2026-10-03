@@ -3,6 +3,7 @@ import { AppError } from '../common/app-error';
 import {
   acceptsPlayers,
   addMember,
+  allSeatsTaken,
   appendChat,
   applySettings,
   assertCanConfigure,
@@ -13,7 +14,10 @@ import {
   markPresent,
   purgeLeftMembers,
   removeMember,
+  shuffleSeats,
   startsByItself,
+  swapSeats,
+  takeSeat,
   toRoomState,
   upgradeRoom,
 } from './room.logic';
@@ -190,6 +194,70 @@ describe('starting', () => {
     expect(startsByItself(r, 4, 6)).toBe(false);
     r.members[2]!.connected = false;
     expect(startsByItself(r, 2, 6)).toBe(false);
+  });
+});
+
+describe('named seats (teams)', () => {
+  const seatsOf = (r: RoomRecord) => Object.fromEntries(r.members.map((m) => [m.id, m.seat]));
+
+  it('lets a player move to a free seat, never onto a taken one', () => {
+    const r = withMembers('a', 'b', 'c');
+    takeSeat(r, 'b', 3, 4);
+    expect(seatsOf(r)).toEqual({ a: 0, b: 3, c: 2 });
+    expect(r.members.map((m) => m.id)).toEqual(['a', 'c', 'b']);
+    takeSeat(r, 'b', 3, 4);
+    expectCode(() => takeSeat(r, 'b', 0, 4), 'SEAT_TAKEN');
+    expectCode(() => takeSeat(r, 'b', 4, 4), 'VALIDATION');
+    expectCode(() => takeSeat(r, 'z', 1, 4), 'NOT_IN_ROOM');
+    // The next to arrive takes the lowest free seat.
+    expect(addMember(r, profile('d')).seat).toBe(1);
+  });
+
+  it('lets the host swap two seats, taken or free', () => {
+    const r = withMembers('a', 'b', 'c');
+    swapSeats(r, 'a', 0, 1, 4);
+    expect(seatsOf(r)).toEqual({ a: 1, b: 0, c: 2 });
+    swapSeats(r, 'a', 2, 3, 4);
+    expect(seatsOf(r)).toEqual({ a: 1, b: 0, c: 3 });
+    expectCode(() => swapSeats(r, 'b', 0, 1, 4), 'NOT_HOST');
+  });
+
+  it('draws everyone a seat', () => {
+    const r = withMembers('a', 'b', 'c', 'd');
+    shuffleSeats(r, 'a', 4, (max) => max - 1);
+    expect(Object.values(seatsOf(r)).sort()).toEqual([0, 1, 2, 3]);
+    const seen = new Set<string>();
+    for (let i = 0; i < 60; i++) {
+      shuffleSeats(r, 'a', 4, (max) => Math.floor(Math.random() * max));
+      seen.add(JSON.stringify(seatsOf(r)));
+    }
+    expect(seen.size).toBeGreaterThan(5);
+    expectCode(() => shuffleSeats(r, 'b', 4, () => 0), 'NOT_HOST');
+  });
+
+  it('only changes seats between matches', () => {
+    const r = withMembers('a', 'b');
+    r.status = 'PLAYING';
+    expectCode(() => takeSeat(r, 'b', 3, 4), 'ROOM_IN_PROGRESS');
+    expectCode(() => swapSeats(r, 'a', 0, 1, 4), 'ROOM_IN_PROGRESS');
+    expectCode(() => shuffleSeats(r, 'a', 4, () => 0), 'ROOM_IN_PROGRESS');
+  });
+
+  it('starts only with every seat taken', () => {
+    const r = withMembers('a', 'b', 'c', 'd');
+    for (const m of r.members) m.ready = true;
+    expect(allSeatsTaken(r, 4)).toBe(true);
+    expect(() => assertCanStart(r, 'a', 4, 4, 4)).not.toThrow();
+    expect(startsByItself(r, 4, 4, 4)).toBe(true);
+    removeMember(r, 'c');
+    expect(allSeatsTaken(r, 4)).toBe(false);
+    r.maxPlayers = 5;
+    addMember(r, profile('e'));
+    takeSeat(r, 'e', 4, 5);
+    expect(allSeatsTaken(r, 4)).toBe(false);
+    expectCode(() => assertCanStart(r, 'a', 4, 4, 4), 'SEATS_MISSING');
+    for (const m of r.members) m.ready = true;
+    expect(startsByItself(r, 4, 4, 4)).toBe(false);
   });
 });
 

@@ -24,6 +24,13 @@ describe('createDeck', () => {
     expect(deck.filter((c) => c.rank === 'JOKER').map((c) => c.id)).toEqual(['JK1', 'JK2']);
   });
 
+  it('leaves out excluded ranks (the 40-card deck)', () => {
+    const deck = createDeck({ jokers: 0, excludeRanks: ['8', '9', '10'] });
+    expect(deck).toHaveLength(40);
+    expect(deck.some((c) => c.rank === '8' || c.rank === '9' || c.rank === '10')).toBe(false);
+    expect(new Set(deck.map((c) => c.id)).size).toBe(40);
+  });
+
   it('uses stable ids like "AS" and "10H"', () => {
     const ids = createDeck({ jokers: 0 }).map((c) => c.id);
     expect(ids).toContain('AS');
@@ -53,6 +60,12 @@ describe('createShoe', () => {
       expect(card).toEqual({ ...parseCardId(card.id), uid: `${card.id}#0` });
     }
     expect(createShoe({ decks: 2, jokers: 2 }).filter((c) => c.rank === 'JOKER')).toHaveLength(4);
+  });
+
+  it('takes the excluded ranks out of every deck', () => {
+    const shoe = createShoe({ decks: 1, excludeRanks: ['8', '9', '10'] });
+    expect(shoe).toHaveLength(40);
+    expect(shoe.every((c) => c.uid === `${c.id}#0`)).toBe(true);
   });
 
   it('refuses an empty or fractional shoe', () => {

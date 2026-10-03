@@ -30,9 +30,10 @@ function resultBadge(match: MatchHistoryEntry): {
   return { text: '–', label: 'Sem resultado', tone: 'neutral' };
 }
 
-/** Best first: by position, else by score (fewest points first). */
+/** Best first: by position, else winners first (team games), else by score (fewest points first). */
 function byResult(a: MatchHistoryPlayer, b: MatchHistoryPlayer): number {
-  return (a.position ?? 99) - (b.position ?? 99) || (a.score ?? 0) - (b.score ?? 0);
+  const won = (p: MatchHistoryPlayer) => (p.outcome === 'WINNER' ? 0 : 1);
+  return (a.position ?? 99) - (b.position ?? 99) || won(a) - won(b) || (a.score ?? 0) - (b.score ?? 0);
 }
 
 /** Recent matches: finishing position, game, opponents (linked) and date. */

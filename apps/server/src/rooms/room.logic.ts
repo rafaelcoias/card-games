@@ -103,14 +103,76 @@ export function hostGone(room: RoomRecord): boolean {
  * A rematch: once everyone at the table, host included, says they want to
  * play again (is ready), the next match starts by itself.
  */
-export function startsByItself(room: RoomRecord, minPlayers: number, maxPlayers: number): boolean {
+export function startsByItself(
+  room: RoomRecord,
+  minPlayers: number,
+  maxPlayers: number,
+  seatCount?: number,
+): boolean {
   const count = room.members.length;
   return (
     room.status === 'OPEN' &&
     count >= minPlayers &&
     count <= maxPlayers &&
+    (seatCount === undefined || allSeatsTaken(room, seatCount)) &&
     room.members.every((m) => m.ready && m.connected)
   );
+}
+
+/** Games with named seats (and so teams): a match starts only with every seat taken. */
+export function allSeatsTaken(room: RoomRecord, seatCount: number): boolean {
+  const taken = new Set(room.members.map((m) => m.seat));
+  return Array.from({ length: seatCount }, (_, seat) => seat).every((seat) => taken.has(seat));
+}
+
+function assertSeatsChange(room: RoomRecord, seatCount: number, ...seats: number[]): void {
+  if (room.status !== 'OPEN')
+    throw new AppError(ErrorCode.RoomInProgress, 'Seats only change between matches');
+  if (seats.some((seat) => seat < 0 || seat >= Math.min(seatCount, room.maxPlayers))) {
+    throw new AppError(ErrorCode.Validation, 'No such seat at this table');
+  }
+}
+
+/** A player moves to a free seat of the table (games with named seats). */
+export function takeSeat(room: RoomRecord, userId: string, seat: number, seatCount: number): void {
+  assertSeatsChange(room, seatCount, seat);
+  const member = requireMember(room, userId);
+  if (member.seat === seat) return;
+  if (room.members.some((m) => m.seat === seat))
+    throw new AppError(ErrorCode.SeatTaken, 'That seat is taken');
+  member.seat = seat;
+  room.members.sort((a, b) => a.seat - b.seat);
+}
+
+/** Host: whoever sits in seat `a` goes to `b` and the other way round (either may be free). */
+export function swapSeats(room: RoomRecord, hostId: string, a: number, b: number, seatCount: number): void {
+  requireHost(room, hostId);
+  assertSeatsChange(room, seatCount, a, b);
+  const inA = room.members.find((m) => m.seat === a);
+  const inB = room.members.find((m) => m.seat === b);
+  if (inA) inA.seat = b;
+  if (inB) inB.seat = a;
+  room.members.sort((x, y) => x.seat - y.seat);
+}
+
+/** Host: everyone gets a seat drawn at random (and with it a partner). `draw(n)` is uniform in `[0, n)`. */
+export function shuffleSeats(
+  room: RoomRecord,
+  hostId: string,
+  seatCount: number,
+  draw: (maxExclusive: number) => number,
+): void {
+  requireHost(room, hostId);
+  assertSeatsChange(room, seatCount);
+  const seats = Array.from({ length: Math.min(seatCount, room.maxPlayers) }, (_, seat) => seat);
+  for (let i = seats.length - 1; i > 0; i--) {
+    const j = draw(i + 1);
+    [seats[i], seats[j]] = [seats[j] as number, seats[i] as number];
+  }
+  room.members.forEach((member, i) => {
+    member.seat = seats[i] as number;
+  });
+  room.members.sort((a, b) => a.seat - b.seat);
 }
 
 export function assertCanConfigure(room: RoomRecord, userId: string, maxPlayers: number): void {
@@ -150,12 +212,16 @@ export function assertCanStart(
   userId: string,
   minPlayers: number,
   maxPlayers: number,
+  seatCount?: number,
 ): void {
   requireHost(room, userId);
   if (room.status !== 'OPEN') throw new AppError(ErrorCode.RoomInProgress, 'A match is already running');
   const count = room.members.length;
   if (count < minPlayers || count > maxPlayers) {
     throw new AppError(ErrorCode.PlayerCount, `This game needs ${minPlayers}–${maxPlayers} players`);
+  }
+  if (seatCount !== undefined && !allSeatsTaken(room, seatCount)) {
+    throw new AppError(ErrorCode.SeatsMissing, 'Every seat must be taken');
   }
   const waiting = room.members.filter((m) => m.id !== room.hostId && (!m.ready || !m.connected));
   if (waiting.length > 0) {

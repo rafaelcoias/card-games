@@ -3,7 +3,17 @@
 import { create } from 'zustand';
 
 export type SoundName =
-  'play' | 'pickUp' | 'burn' | 'splash' | 'doubt' | 'skip' | 'snap' | 'gringo' | 'yourTurn' | 'chat';
+  | 'play'
+  | 'pickUp'
+  | 'burn'
+  | 'splash'
+  | 'doubt'
+  | 'skip'
+  | 'snap'
+  | 'gringo'
+  | 'yourTurn'
+  | 'chat'
+  | 'handEnd';
 
 const STORAGE_KEY = 'cardroom:sound';
 
@@ -98,6 +108,7 @@ export function playSound(name: SoundName): void {
     pickUp: { freq: [300, 220], dur: 0.12, type: 'sine', vol: 0.14 },
     yourTurn: { freq: [660, 880], dur: 0.12, type: 'sine', vol: 0.1 },
     chat: { freq: [990], dur: 0.05, type: 'triangle', vol: 0.07 },
+    handEnd: { freq: [523, 392], dur: 0.16, type: 'sine', vol: 0.07 },
   };
   const tone = tones[name];
   tone.freq.forEach((freq, i) => {

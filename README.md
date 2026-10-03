@@ -8,7 +8,8 @@ com um servidor autoritativo. Os jogos são a **Mexicana**, a **Fodinha** (apost
 especificação em `desconfia-kit/`), o **Olho** (o *Presidente* português: livrar-se das cartas primeiro, ganhar um
 cargo e trocar cartas no jogo seguinte, numa mesa contínua; especificação em `olho-kit/`) e o **Gringo** (memória e
 pontos baixos: quatro cartas viradas para baixo em posições fixas, só se conhecem duas; trocar, espreitar e bater
-cartas iguais; especificação em `gringo-kit/`).
+cartas iguais; especificação em `gringo-kit/`), e a **Sueca** (dois contra dois, parceiros frente a frente: 40
+cartas, trunfo e obrigação de assistir; especificação em `sueca-kit/`).
 O jogo trivial "Carta Mais Alta" (`packages/games/high-card`) está desativado: o registo está comentado no servidor e
 no cliente.
 
@@ -40,6 +41,7 @@ packages/
     desconfia/  Motor puro do Desconfia (sem I/O)
     olho/       Motor puro do Olho (sem I/O)
     gringo/     Motor puro do Gringo (sem I/O)
+    sueca/      Motor puro da Sueca (sem I/O)
     high-card/  Jogo trivial (desativado)
   ui/         Baralho SVG (sprite + gerador) e componentes animados (Card, CardFan, …)
 firebase.json, firestore.rules, firestore.indexes.json   Configuração Firebase + emuladores
@@ -160,10 +162,10 @@ persistem em `.firebase-data/`.
 | `pnpm dev` | Tudo em modo desenvolvimento (Turborepo) |
 | `pnpm build` | Build de produção de todos os workspaces |
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Qualidade (ESLint com tipos, TS strict, Prettier) |
-| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana, do Peixinho, do Desconfia, do Olho e do Gringo e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
+| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana, do Peixinho, do Desconfia, do Olho e do Gringo, **100 000 mãos** de Sueca (`SUECA_SIMULATION_HANDS` encurta-as) e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
 | `pnpm --filter @cardroom/server test:int` | Repositórios Firestore contra o emulador |
-| `pnpm --filter @cardroom/server test:e2e` | Clientes Socket.IO jogam partidas completas (com reconexão; no Desconfia e no Gringo, com desconfianças/batidas simultâneas de que só uma conta) e sessões de Blackjack e de Olho onde se entra e sai a meio, e a vida de uma sala entre partidas (jogar outra vez, mudar o jogo, fechar quando o anfitrião sai) (`E2E_SERVER_URLS=url1,url2` reparte por 2 instâncias) |
-| `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe, partidas completas (incluindo o Peixinho a 3, e o Desconfia e o Gringo a 4, com um recarregar a meio) e sessões de Blackjack e de Olho pela UI |
+| `pnpm --filter @cardroom/server test:e2e` | Clientes Socket.IO jogam partidas completas (com reconexão; no Desconfia e no Gringo, com desconfianças/batidas simultâneas de que só uma conta) e sessões de Blackjack e de Olho onde se entra e sai a meio, a vida de uma sala entre partidas (jogar outra vez, mudar o jogo, fechar quando o anfitrião sai) e uma Sueca com lugares escolhidos, chat fechado durante a mão, uma pausa a meio de uma vaza que retoma o relógio exato e o anfitrião a terminar sem resultado (`E2E_SERVER_URLS=url1,url2` reparte por 2 instâncias) |
+| `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe, partidas completas (incluindo o Peixinho a 3, e o Desconfia e o Gringo a 4, com um recarregar a meio, e a Sueca a 4, com escolha de parceiros e um jogador que sai e volta a meio da mão) e sessões de Blackjack e de Olho pela UI |
 | `pnpm emulators` | Emuladores Firebase (Auth + Firestore) |
 | `pnpm firebase:deploy-rules` | Publica `firestore.rules` e os índices no projeto Firebase |
 | `pnpm cards:generate` | Regenera o baralho SVG |
@@ -177,7 +179,9 @@ peek, banca, liquidação, baralhar, mesa cheia, recompra, entrar a meio) em **`
 última carta, fim, 8 jogadores) em **`/dev/desconfia`**, os do Olho (abrir, seguir com par, salto com escape, saltado,
 quatro iguais, joker, ninguém bateu, troca do Presidente, troca do Olho, resumo, bloqueado, 8 jogadores) em
 **`/dev/olho`**, e os do Gringo (espreitar inicial, a tua vez, carta tirada, carta com poder, cada poder, espreitam-te,
-janela de bater, bateu, errou, troca às cegas, Gringo, revelação final, 10 jogadores) em **`/dev/gringo`**.
+janela de bater, bateu, errou, troca às cegas, Gringo, revelação final, 10 jogadores) em **`/dev/gringo`**, e os da
+Sueca (sala com lugares, cortas tu, outro corta, a tua vez, trunfo à vista, dás tu, vaza fechada, última vaza, resumo da
+mão, pausa, pausa a decidir, fim) em **`/dev/sueca`**.
 
 ## Decisões e notas
 
@@ -362,5 +366,36 @@ janela de bater, bateu, errou, troca às cegas, Gringo, revelação final, 10 jo
   - **Simulação.** 10 000 partidas de 2 a 10 bots (com memória perfeita ou ao calhas, batidas com probabilidades
     diferentes e opções da sala sorteadas) verificam em cada passo a conservação das cartas, que os índices das
     grelhas só crescem e nunca mudam, e que há no máximo uma batida por descarte; acabam todas (média ~105–140 ações).
+- **Sueca.** Regras do `sueca-kit/02` com as propostas do `09` aceites: 4 jogadores reais (sem bots), 40 cartas
+  (sem 8, 9 e 10), Ás · 7 · Rei · Valete · Dama · 6…2 (11, 10, 4, 3, 2 pontos), sentido contrário aos ponteiros do
+  relógio. Quem dá é sorteado na primeira mão; quem corta (à esquerda) escolhe "de cima" ou "de baixo" e essa carta é o
+  trunfo de quem dá, à vista até ser jogada. Mão: 61–90 = 1 jogo, 91–119 = 2, 120 = 4 (bandeira), 60–60 ninguém
+  pontua; partida a 4 jogos (1–10 na sala). Ao fim dos 30 s joga-se a carta permitida que vale menos; o corte, ao fim de
+  15 s, é sorteado a partir da seed.
+  - **Duas alterações ao núcleo** (`sueca-kit/04`), reutilizáveis por qualquer jogo de equipas:
+    - `seating` no `GameModule` (lugares com nome e equipas): a sala mostra a mesa vista de cima; cada um toca num
+      lugar livre (`room:seat`), o anfitrião troca dois lugares (`room:swap-seats`) ou sorteia todos
+      (`room:shuffle-seats`), e só se começa com todos os lugares ocupados. O motor recebe `seating` no `setup`.
+    - `disconnectPolicy: 'PAUSE'`: quem cai (ou sai) pára a mesa com `SYS_PAUSE`; o relógio da decisão em curso fica
+      congelado e retoma exatamente onde estava com `SYS_RESUME`. A espera (`getPauseGraceMs`, 2 min) chega a todos
+      em `game:view` (`pause`, sem desvio de relógio); passado o prazo, só o anfitrião decide (`game:pause-decision`):
+      esperar mais 2 min ou terminar **sem resultado** (`aborted`, `abortReason: 'HOST_ENDED'`, não conta para as
+      estatísticas). Se é o anfitrião quem falta, a partida acaba sem resultado no fim da espera; se sai, acaba logo.
+  - **Chat fechado durante a mão.** Um terceiro gancho pequeno, `isChatOpen`: o servidor recusa mensagens
+    (`CHAT_CLOSED`) do corte ao fim da última vaza, e a vista diz `chatOpen` (ícone com cadeado). Abre no resumo
+    entre mãos e no fim. A plataforma não tem reações; a voz da sala ficou como está (o kit põe a voz fora de âmbito).
+  - **Última vaza**, uma vez por mão por jogador, durante 3 s: só quem pede a recebe na sua vista (`lastTrickView`);
+    os outros sabem apenas que alguém olhou. Os pontos ficam escondidos até ao fim da mão (só se vê o nº de vazas).
+  - **Informação oculta.** As mãos alheias nunca saem do servidor; os eventos levam só as cartas jogadas e a de trunfo.
+    Os testes serializam todas as vistas e eventos; o e2e de sockets cruza as mãos de cada jogador com tudo o que os
+    outros receberam.
+  - **Resultado.** Ganham os dois parceiros (`WINNER`, com os jogos da equipa como pontuação); o resumo leva as mãos e,
+    entre partidas da mesma sala, as partidas ganhas por cada par (`MatchResult.summary` passa ao `setup` seguinte).
+  - **Mesa.** Tu em baixo, o parceiro em cima, quem joga a seguir à tua direita; só as cartas permitidas respondem
+    (tocar duas vezes ou arrastar para a mesa), as outras ficam esbatidas. Nomes sem artigos ("Ganharam Ana e Carla"):
+    um nome não diz o género de quem o usa.
+  - **Simulação.** 100 000 mãos de bots ao calhas (com quedas e regressos, olhares à última vaza, tempos esgotados e
+    cartas ilegais tentadas) verificam em cada passo 40 cartas, 10 vazas e 120 pontos por mão, e que toda a carta jogada
+    é legal; o guião `05` corre como teste (79–41, 1 jogo). Cobertura do motor ≥ 99%.
 #   c a r d - g a m e s  
  

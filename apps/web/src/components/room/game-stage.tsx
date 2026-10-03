@@ -12,6 +12,7 @@ import { findGameClient } from '@/games/registry';
 import { formatScore, signedChips, signedPoints } from '@/games/score';
 import type { GameClientDefinition, ResultStyle } from '@/games/types';
 import { useSoundPreference } from '@/games/shared/sounds';
+import { useLatestGameView } from '@/games/shared/use-game-view';
 import { describeError } from '@/lib/errors';
 import { gameFeed } from '@/lib/realtime/game-feed';
 import { CLOSED_MESSAGE, useRoomCommands } from '@/lib/realtime/socket-provider';
@@ -20,6 +21,7 @@ import { toast } from '@/lib/toast';
 import { ChatBubbles } from './chat-bubbles';
 import { ChatPanel } from './chat-panel';
 import { MicButton } from './mic-button';
+import { PauseVeil } from './pause-veil';
 
 /** Full-screen table for a running match, with chat drawer and end-of-match results. */
 export function GameStage({ room, selfId }: { room: RoomState; selfId: string }) {
@@ -42,6 +44,12 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
   // A session table (blackjack) is left like a café table, and only the host closes it.
   const session = room.lifecycle === 'SESSION';
   const leaveLabel = session ? 'Sair da mesa' : 'Sair da partida';
+  // Some games close the chat while a hand is played, and stop for a player who dropped.
+  const live = useLatestGameView();
+  const current = !matchOver && live !== null && live.matchId === room.matchId ? live : null;
+  const chatLocked = current !== null && !current.chatOpen;
+  const pause = current?.pause ?? null;
+  const pauseArrival = current ? gameFeed.arrivalOf(current) : 0;
 
   const endSession = async () => {
     setEnding(true);
@@ -92,8 +100,13 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
           <IconButton label={sound.enabled ? 'Desligar sons' : 'Ligar sons'} onClick={sound.toggle}>
             {sound.enabled ? '🔊' : '🔇'}
           </IconButton>
-          <IconButton label="Chat" onClick={() => setChatOpen((o) => !o)} badge={chatOpen ? 0 : unread}>
-            💬
+          <IconButton
+            label={chatLocked ? 'Chat fechado: abre no fim da mão' : 'Chat'}
+            onClick={() => setChatOpen((o) => !o)}
+            badge={chatOpen || chatLocked ? 0 : unread}
+            className={chatLocked ? 'opacity-60 grayscale' : undefined}
+          >
+            {chatLocked ? '🔒' : '💬'}
           </IconButton>
           {session && room.hostId === selfId && !matchOver && (
             <Button size="sm" variant="secondary" onClick={() => setConfirmEnd(true)}>
@@ -137,6 +150,14 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
           </FlightLayer>
         </AnchorProvider>
 
+        <PauseVeil
+          pause={pause}
+          receivedAt={pauseArrival}
+          room={room}
+          selfId={selfId}
+          onDecide={commands.decidePause}
+        />
+
         <ChatBubbles selfId={selfId} chatOpen={chatOpen} onOpenChat={() => setChatOpen(true)} />
 
         <AnimatePresence>
@@ -149,7 +170,7 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
               transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}
             >
               <div className="relative h-full">
-                <ChatPanel className="h-full" />
+                <ChatPanel className="h-full" locked={chatLocked} />
                 <button
                   type="button"
                   onClick={() => setChatOpen(false)}
@@ -189,6 +210,16 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
             <>
               Se tiveres cartas na mesa, as tuas mãos ficam e são pagas normalmente. O teu saldo conta para o
               resultado da sessão, e podes voltar à mesa enquanto houver lugar.
+            </>
+          ) : game?.pausesForMissing && room.hostId === selfId ? (
+            <>
+              A mesa não joga sem ti: a partida termina já,{' '}
+              <strong className="text-ivory">sem resultado</strong>, e a sala fecha.
+            </>
+          ) : game?.pausesForMissing ? (
+            <>
+              A mesa fica parada à tua espera. Se não voltares a tempo, o anfitrião pode terminar a partida
+              sem resultado.
             </>
           ) : (
             <>
@@ -265,7 +296,24 @@ function ResultsModal({ result, style, game, room, selfId, leaving, onClose, onL
 
   let title = '';
   let description: string | undefined;
-  if (style === 'chips') {
+  if (result?.aborted && result.abortReason === 'HOST_ENDED') {
+    title = 'Partida terminada sem resultado';
+    description = 'O anfitrião terminou a partida: não conta para as estatísticas de ninguém.';
+  } else if (style === 'teams') {
+    const winners = standings.filter((s) => s.outcome === 'WINNER');
+    const losers = standings.filter((s) => s.outcome === 'LOSER');
+    const score = `${winners[0]?.score ?? 0} a ${losers[0]?.score ?? 0}`;
+    title = result?.aborted
+      ? 'Partida interrompida'
+      : mine?.outcome === 'WINNER'
+        ? 'Ganhámos! 🎉'
+        : mine?.outcome === 'LOSER'
+          ? 'Perdemos…'
+          : 'Fim da partida';
+    description = result?.aborted
+      ? 'Todos os jogadores saíram.'
+      : `Ganharam ${winners.map((s) => (s.playerId === selfId ? 'tu' : s.username)).join(' e ')} — ${score}`;
+  } else if (style === 'chips') {
     const net = mine?.score ?? 0;
     title = !mine
       ? 'Sessão terminada'
@@ -341,6 +389,12 @@ function ResultsModal({ result, style, game, room, selfId, leaving, onClose, onL
             );
           })}
         </ol>
+      )}
+      {result && !result.aborted && style === 'teams' && (
+        <TeamsStandings standings={standings} selfId={selfId} />
+      )}
+      {result && !result.aborted && game?.ResultDetails && (
+        <game.ResultDetails result={result} selfId={selfId} />
       )}
       {result && !result.aborted && style === 'chips' && (
         <ol className="flex flex-col gap-2">
@@ -514,6 +568,39 @@ function Rematch({
         </Button>
       </div>
     </>
+  );
+}
+
+/** The two pairs of a team game, winners first, each with its games. */
+function TeamsStandings({ standings, selfId }: { standings: PlayerStanding[]; selfId: string }) {
+  const pairs = (['WINNER', 'LOSER'] as const).map((outcome) =>
+    standings.filter((s) => s.outcome === outcome),
+  );
+  return (
+    <ol className="flex flex-col gap-2">
+      {pairs.map((pair, i) => {
+        if (pair.length === 0) return null;
+        const won = i === 0;
+        const mine = pair.some((s) => s.playerId === selfId);
+        const games = pair[0]?.score ?? 0;
+        return (
+          <li
+            key={won ? 'winners' : 'losers'}
+            className={`flex items-center gap-3 rounded-xl px-4 py-2.5 ${mine ? 'bg-gold/15' : 'bg-surface-2'}`}
+          >
+            <span className="w-6 text-lg" aria-hidden="true">
+              {won ? '🏆' : ''}
+            </span>
+            <span className="min-w-0 flex-1 truncate font-medium">
+              {pair.map((s) => (s.playerId === selfId ? `${s.username} (tu)` : s.username)).join(' e ')}
+            </span>
+            <span className={`font-semibold tabular-nums ${won ? 'text-gold' : 'text-muted'}`}>
+              {games} {games === 1 ? 'jogo' : 'jogos'}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
