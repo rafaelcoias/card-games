@@ -580,7 +580,10 @@ export class GameSessionsService implements OnModuleInit {
     room.status = 'OPEN';
     room.lastResult = aborted ? room.lastResult : result;
     purgeLeftMembers(room);
-    for (const member of room.members) member.ready = false;
+    // Players say whether they want another; whoever waited for this one to end already did.
+    for (const member of room.members) {
+      if (session.players.includes(member.id)) member.ready = false;
+    }
     if (room.members.length === 0) room.status = 'CLOSED';
 
     effects.defer(() => this.matches.finish(session.matchId, standings, aborted));

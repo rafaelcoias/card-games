@@ -10,7 +10,7 @@ import type { OnlinePlayer, PresenceSnapshot, PresenceStatus } from '@cardroom/s
 import type Redis from 'ioredis';
 import { GAME_REGISTRY } from '../games/tokens';
 import { REDIS } from '../redis/redis.module';
-import { acceptsPlayers, type MemberProfile } from '../rooms/room.logic';
+import { acceptsPlayers, isWaiting, type MemberProfile } from '../rooms/room.logic';
 import type { RoomRecord } from '../rooms/room.model';
 import { RoomStore } from '../rooms/room.store';
 
@@ -139,7 +139,11 @@ export class PresenceService implements OnApplicationBootstrap, OnModuleDestroy 
       const info = JSON.parse(raw) as { username: string; avatarUrl: string | null; guest?: boolean };
       const roomId = roomIds[i];
       const room = roomId ? roomById.get(roomId) : null;
-      const status: PresenceStatus = !room ? 'lobby' : room.status === 'PLAYING' ? 'playing' : 'room';
+      const status: PresenceStatus = !room
+        ? 'lobby'
+        : room.status === 'PLAYING' && !isWaiting(room, id)
+          ? 'playing'
+          : 'room';
       players.push({
         id,
         username: info.username,

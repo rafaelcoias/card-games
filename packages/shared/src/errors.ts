@@ -8,6 +8,7 @@ export const ErrorCode = {
   RoomNotFound: 'ROOM_NOT_FOUND',
   RoomFull: 'ROOM_FULL',
   RoomInProgress: 'ROOM_IN_PROGRESS',
+  RoomClosing: 'ROOM_CLOSING',
   AlreadyInRoom: 'ALREADY_IN_ROOM',
   NotInRoom: 'NOT_IN_ROOM',
   NotHost: 'NOT_HOST',

@@ -25,7 +25,7 @@ export function AppShell({ profile, children }: { profile: ProfileDto; children:
   const pathname = usePathname();
   return (
     <ProfileProvider profile={profile}>
-      <SocketProvider>
+      <SocketProvider selfId={profile.id}>
         <CardSprite />
         <div className="app-backdrop flex min-h-dvh flex-col">
           <header className="sticky top-0 z-30 border-b border-line bg-ink/75 backdrop-blur-md">

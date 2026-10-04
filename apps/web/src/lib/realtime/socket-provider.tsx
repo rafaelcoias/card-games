@@ -77,7 +77,7 @@ function networkFailure<T>(): Ack<T> {
  * Owns the single Socket.IO connection of the signed-in user and mirrors
  * server pushes into the realtime store / game feed.
  */
-export function SocketProvider({ children }: { children: ReactNode }) {
+export function SocketProvider({ selfId, children }: { selfId: string; children: ReactNode }) {
   const router = useRouter();
   const [socket] = useState<GameSocket>(() =>
     io(publicEnv.gameServerUrl, {
@@ -140,9 +140,15 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       toast.error(CLOSED_MESSAGE[reason]);
       router.replace('/lobby');
     });
-    socket.on('game:events', (message) => gameFeed.pushEvents(message));
+    // Waiting for the next match is not sitting at the table: its moves and its result are not ours.
+    const waiting = () => store().room?.players.find((p) => p.id === selfId)?.waiting === true;
+    socket.on('game:events', (message) => {
+      if (!waiting()) gameFeed.pushEvents(message);
+    });
     socket.on('game:view', (message) => gameFeed.pushView(message));
-    socket.on('game:finished', (result) => store().setResult(result));
+    socket.on('game:finished', (result) => {
+      if (!waiting()) store().setResult(result);
+    });
     socket.on('game:error', (error) => toast.error(describeError(error)));
 
     socket.connect();
@@ -151,7 +157,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       socket.io.removeAllListeners();
       socket.disconnect();
     };
-  }, [router, socket]);
+  }, [router, selfId, socket]);
 
   const commands = useMemo<RoomCommands>(() => {
     const call = <T,>(run: () => Promise<Ack<T>>) => run().catch(() => networkFailure<T>());

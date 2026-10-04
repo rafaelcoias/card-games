@@ -1,10 +1,10 @@
 'use client';
 
-import type { MatchResult, PlayerStanding, RoomState } from '@cardroom/shared';
+import type { MatchResult, PlayerStanding, RoomPlayer, RoomState } from '@cardroom/shared';
 import { AnchorProvider, FlightLayer } from '@cardroom/ui';
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { Modal } from '@/components/ui/modal';
@@ -40,6 +40,7 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
   const matchOver = result !== null;
   const game = findGameClient(room.gameId);
   const Table = game?.Table;
+  const table = useMemo(() => tableRoom(room, result), [room, result]);
   const shownResult = useDelayed(result, game?.resultDelayMs ?? 0);
   // A session table (blackjack) is left like a café table, and only the host closes it.
   const session = room.lifecycle === 'SESSION';
@@ -95,6 +96,7 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
         <span className="rounded-md bg-black/30 px-2 py-0.5 font-mono text-xs tracking-[0.2em] text-ivory/70">
           {room.code}
         </span>
+        <NextMatchQueue players={room.players.filter((p) => p.waiting)} />
         <div className="ml-auto flex items-center gap-1">
           <MicButton />
           <IconButton label={sound.enabled ? 'Desligar sons' : 'Ligar sons'} onClick={sound.toggle}>
@@ -142,7 +144,7 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
           <FlightLayer>
             <LayoutGroup>
               {Table ? (
-                <Table room={room} selfId={selfId} sendAction={commands.sendAction} />
+                <Table room={table} selfId={selfId} sendAction={commands.sendAction} />
               ) : (
                 <p className="p-8">Jogo não suportado neste cliente.</p>
               )}
@@ -259,6 +261,33 @@ export function GameStage({ room, selfId }: { room: RoomState; selfId: string })
         </div>
       </Modal>
     </div>
+  );
+}
+
+/**
+ * The room as the table sees it: the match's players only. Whoever came in
+ * meanwhile stays off it (tables size themselves on their players), also
+ * while the results show and they no longer wait.
+ */
+function tableRoom(room: RoomState, result: MatchResult | null): RoomState {
+  const played = result?.standings.length ? new Set(result.standings.map((s) => s.playerId)) : null;
+  const players = room.players.filter((p) => (played ? played.has(p.id) : !p.waiting));
+  return players.length === room.players.length ? room : { ...room, players };
+}
+
+/** Whoever came in during the match: the table sees they are in for the next one. */
+function NextMatchQueue({ players }: { players: RoomPlayer[] }) {
+  if (players.length === 0) return null;
+  const names = new Intl.ListFormat('pt-PT', { type: 'conjunction' }).format(players.map((p) => p.username));
+  const label = `${names} ${players.length === 1 ? 'espera' : 'esperam'} pela próxima partida`;
+  return (
+    <span className="rounded-md bg-black/30 px-2 py-0.5 text-xs text-ivory/70" title={label}>
+      <span aria-hidden="true">
+        +{players.length}
+        <span className="hidden sm:inline"> na próxima</span>
+      </span>
+      <span className="sr-only">{label}</span>
+    </span>
   );
 }
 

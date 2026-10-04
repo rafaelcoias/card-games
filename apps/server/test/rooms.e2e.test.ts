@@ -1,8 +1,9 @@
 /**
  * A room's life between matches, over Socket.IO against a RUNNING server (see
  * multiplayer.e2e.test.ts): a rematch starts by itself once everyone asks for
- * it, the host changes the game for the same players, and a room whose host
- * leaves closes for everyone.
+ * it, the host changes the game for the same players, a room whose host
+ * leaves closes for everyone, and whoever comes in during a match waits for
+ * the next one, ready before it ends.
  */
 import { randomUUID } from 'node:crypto';
 import type { PeixinhoAction, PeixinhoView } from '@cardroom/peixinho';
@@ -71,5 +72,77 @@ describe('rooms between matches', () => {
     expect(closed).toEqual(['HOST_LEFT']);
     const rejoin = (await guest.socket.timeout(8000).emitWithAck('room:join', { code })) as Ack<JoinedRoom>;
     expect(!rejoin.ok && rejoin.error.code).toBe('ROOM_NOT_FOUND');
+  });
+});
+
+describe('coming in during a match', () => {
+  it('waits in the room, says it is ready, and plays the next match', async () => {
+    const waiters = await createBots<PeixinhoView, PeixinhoAction>(`wait_${randomUUID().slice(0, 6)}`, 3);
+    bots.push(...waiters);
+    const [host, guest, newcomer] = waiters as [PeixinhoBot, PeixinhoBot, PeixinhoBot];
+    const rooms: RoomState[] = [];
+    host.socket.on('room:state', (room) => rooms.push(room));
+    const newcomerViews: string[] = [];
+    const rejections: string[] = [];
+    for (const bot of waiters) {
+      attachBot(
+        bot,
+        (view) => view.validActions[0] ?? null,
+        rejections,
+        (view) => {
+          if (bot === newcomer) newcomerViews.push(view.matchId);
+        },
+      );
+    }
+    const latest = () => rooms.at(-1);
+    const player = (bot: PeixinhoBot) => latest()?.players.find((p) => p.id === bot.id);
+    const ready = (bot: PeixinhoBot, value = true) =>
+      bot.socket.timeout(8000).emitWithAck('room:ready', { ready: value }) as Promise<Ack>;
+
+    // A seat is still free: the room takes them in while the match goes on.
+    const code = await startMatch([host, guest], 'peixinho', {}, 3);
+    await waitFor(() => host.lastView !== null, 5_000, 'the first match');
+    const first = host.lastView?.matchId;
+    const joined = (await newcomer.socket
+      .timeout(8000)
+      .emitWithAck('room:join', { code })) as Ack<JoinedRoom>;
+    if (!joined.ok) throw new Error(joined.error.code);
+    expect(joined.data.room.status).toBe('PLAYING');
+    expect(joined.data.room.players.map((p) => [p.id, p.waiting])).toEqual([
+      [host.id, false],
+      [guest.id, false],
+      [newcomer.id, true],
+    ]);
+
+    // They say they are in for the next one; the players cannot, their match is not over.
+    expect(await ready(newcomer)).toEqual({ ok: true });
+    await waitFor(() => player(newcomer)?.ready === true, 5_000, 'the newcomer to be ready');
+    const early = await ready(guest);
+    expect(!early.ok && early.error.code).toBe('ROOM_IN_PROGRESS');
+
+    await waitFor(
+      () => [host, guest].every((b) => b.result?.matchId === first),
+      60_000,
+      'the first match to end',
+    );
+    expect(newcomerViews).toEqual([]); // never at that table
+    await waitFor(() => latest()?.status === 'OPEN', 5_000, 'the room back between matches');
+    // Still ready: the rematch needs only the players who just finished.
+    expect(player(newcomer)).toMatchObject({ ready: true, waiting: false });
+    expect(player(guest)?.ready).toBe(false);
+    expect(await ready(guest)).toEqual({ ok: true });
+    expect(await ready(host)).toEqual({ ok: true });
+
+    await waitFor(() => latest()?.status === 'PLAYING', 5_000, 'the rematch to start');
+    const second = latest()?.matchId;
+    expect(second).not.toBe(first);
+    expect(latest()?.players.every((p) => !p.waiting)).toBe(true);
+    // Now they are at the table: the match deals them in and they play their turns.
+    await waitFor(
+      () => newcomer.lastView?.matchId === second && (newcomer.lastView?.seq ?? 0) > 0,
+      30_000,
+      'the newcomer to play the rematch',
+    );
+    expect(new Set(newcomerViews)).toEqual(new Set([second]));
   });
 });

@@ -11,9 +11,11 @@ import {
   assertCanStart,
   hostGone,
   isEmpty,
+  isWaiting,
   markPresent,
   purgeLeftMembers,
   removeMember,
+  setMemberReady,
   shuffleSeats,
   startsByItself,
   swapSeats,
@@ -86,25 +88,57 @@ describe('room membership', () => {
     expectCode(() => addMember(r, profile('f')), 'ROOM_FULL');
   });
 
-  it('refuses joining while a match runs', () => {
-    const r = withMembers('a', 'b');
-    r.status = 'PLAYING';
-    expectCode(() => addMember(r, profile('c')), 'ROOM_IN_PROGRESS');
-  });
-
-  it('a running session table takes players; a running match does not', () => {
+  it('takes players while a game is played, up to the size of the table', () => {
     const table = withMembers('a', 'b');
     table.lifecycle = 'SESSION';
     table.status = 'PLAYING';
+    table.session = session(['a', 'b']);
     expect(acceptsPlayers(table)).toBe(true);
     expect(addMember(table, profile('c')).seat).toBe(2);
     table.maxPlayers = 3;
     expectCode(() => addMember(table, profile('d')), 'ROOM_FULL');
-    const match = withMembers('a', 'b');
-    match.status = 'PLAYING';
-    expect(acceptsPlayers(match)).toBe(false);
     table.status = 'CLOSED';
     expect(acceptsPlayers(table)).toBe(false);
+  });
+
+  it('has whoever comes in during a match wait for the next one', () => {
+    const r = withMembers('a', 'b');
+    r.status = 'PLAYING';
+    r.session = session(['a', 'b']);
+    expect(acceptsPlayers(r)).toBe(true);
+    expect(addMember(r, profile('c'))).toMatchObject({ seat: 2, ready: false });
+    expect(isWaiting(r, 'c')).toBe(true);
+    expect(isWaiting(r, 'a')).toBe(false);
+    expect(toRoomState(r, 'Mexicana').players.map((p) => [p.id, p.waiting])).toEqual([
+      ['a', false],
+      ['b', false],
+      ['c', true],
+    ]);
+    // Leaving costs them nothing: no seat is kept for them in a match they never played.
+    removeMember(r, 'c');
+    expect(r.members.map((m) => m.id)).toEqual(['a', 'b']);
+    r.session = null;
+    r.status = 'OPEN';
+    addMember(r, profile('d'));
+    expect(isWaiting(r, 'd')).toBe(false);
+  });
+
+  it('takes nobody once the game in play is the room’s last', () => {
+    const aging = withMembers('a', 'b');
+    aging.status = 'PLAYING';
+    aging.session = session(['a', 'b']);
+    aging.closing = 'EXPIRED';
+    expect(acceptsPlayers(aging)).toBe(false);
+    expectCode(() => addMember(aging, profile('c')), 'ROOM_CLOSING');
+
+    const hostless = withMembers('a', 'b');
+    hostless.status = 'PLAYING';
+    hostless.session = session(['a', 'b']);
+    Object.assign(hostless.members[0]!, { connected: false, away: true });
+    expect(acceptsPlayers(hostless)).toBe(false);
+    expectCode(() => addMember(hostless, profile('c')), 'ROOM_CLOSING');
+    markPresent(hostless.members[0]!); // the host is back: the room goes on
+    expect(addMember(hostless, profile('c')).id).toBe('c');
   });
 
   it('keeps leavers who still hold a seat at a session table', () => {
@@ -194,6 +228,23 @@ describe('starting', () => {
     expect(startsByItself(r, 4, 6)).toBe(false);
     r.members[2]!.connected = false;
     expect(startsByItself(r, 2, 6)).toBe(false);
+  });
+
+  it('lets only whoever waits for the next match say they are ready while one is played', () => {
+    const r = withMembers('a', 'b');
+    r.status = 'PLAYING';
+    r.session = session(['a', 'b']);
+    addMember(r, profile('c'));
+    setMemberReady(r, 'c', true);
+    expect(r.members[2]!.ready).toBe(true);
+    expect(startsByItself(r, 2, 6)).toBe(false); // nothing starts in the middle of a match
+    expectCode(() => setMemberReady(r, 'b', true), 'ROOM_IN_PROGRESS');
+    expectCode(() => setMemberReady(r, 'z', true), 'NOT_IN_ROOM');
+    r.session = null;
+    r.status = 'OPEN';
+    setMemberReady(r, 'b', true);
+    setMemberReady(r, 'a', true);
+    expect(startsByItself(r, 2, 6)).toBe(true);
   });
 });
 
@@ -311,6 +362,15 @@ describe('kicking', () => {
     expectCode(() => assertCanKick(r, 'a', 'b'), 'CANNOT_KICK');
     r.members[1]!.connected = false;
     expect(assertCanKick(r, 'a', 'b').id).toBe('b');
+  });
+
+  it('lets the host kick someone waiting for the next match: they are not playing', () => {
+    const r = withMembers('a', 'b');
+    r.status = 'PLAYING';
+    r.session = session(['a', 'b']);
+    addMember(r, profile('c'));
+    expect(assertCanKick(r, 'a', 'c').id).toBe('c');
+    expectCode(() => assertCanKick(r, 'a', 'b'), 'CANNOT_KICK');
   });
 });
 

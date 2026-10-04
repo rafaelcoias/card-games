@@ -1,6 +1,6 @@
 'use client';
 
-import type { PlayerStanding, RoomPlayer, RoomState } from '@cardroom/shared';
+import type { MatchResult, PlayerStanding, RoomPlayer, RoomState } from '@cardroom/shared';
 import clsx from 'clsx';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -34,6 +34,15 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
   const minPlayers = game?.minPlayers ?? 2;
   const canStart = room.players.length >= minPlayers && waitingFor.length === 0;
   const session = room.lifecycle === 'SESSION';
+  // A match is being played: only whoever came in meanwhile is here, waiting for the next one.
+  const inPlay = room.status === 'PLAYING';
+  const tableStatus = inPlay
+    ? `${room.players.filter((p) => !p.waiting).length} a jogar`
+    : canStart
+      ? null
+      : room.players.length < minPlayers
+        ? `Faltam ${minPlayers - room.players.length} jogador(es)`
+        : `À espera de ${waitingFor.map((p) => p.username).join(', ')}`;
 
   const run = async (
     key: string,
@@ -83,26 +92,10 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
           </div>
         </div>
 
-        {room.lastResult && room.lastResult.standings.length > 0 && (
-          <div className="panel flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3 text-sm">
-            <span className="font-semibold text-gold">Última partida</span>
-            {game?.resultStyle === 'teams' ? (
-              <TeamsResult standings={room.lastResult.standings} />
-            ) : (
-              room.lastResult.standings.map((s) => (
-                <span key={s.playerId} className={s.outcome === 'LOSER' ? 'text-danger' : 'text-ivory/85'}>
-                  {s.position !== undefined ? (
-                    <span className="tabular-nums text-subtle">{s.position}.º </span>
-                  ) : null}
-                  {s.username}
-                  {s.score !== undefined && (
-                    <span className="tabular-nums text-subtle"> · {formatScore(game, s.score)}</span>
-                  )}
-                  {s.position === undefined && s.outcome === 'LOSER' && ' · perdeu'}
-                </span>
-              ))
-            )}
-          </div>
+        {inPlay ? (
+          <MatchInPlay ready={me?.ready === true} />
+        ) : (
+          <LastResult result={room.lastResult} game={game} />
         )}
 
         <section className="panel p-5" aria-labelledby="players-heading">
@@ -113,13 +106,7 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
                 {room.players.length}/{room.maxPlayers}
               </span>
             </h2>
-            {!canStart && (
-              <p className="text-sm text-muted">
-                {room.players.length < minPlayers
-                  ? `Faltam ${minPlayers - room.players.length} jogador(es)`
-                  : `À espera de ${waitingFor.map((p) => p.username).join(', ')}`}
-              </p>
-            )}
+            {tableStatus && <p className="text-sm text-muted">{tableStatus}</p>}
           </div>
           {game?.seating ? (
             <div className="mt-4">
@@ -139,6 +126,7 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
                   {player ? (
                     <PlayerRow
                       player={player}
+                      playing={inPlay && !player.waiting}
                       isHost={player.id === room.hostId}
                       isSelf={player.id === selfId}
                       canKick={isHost && player.id !== selfId}
@@ -172,7 +160,11 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
               loading={busy === 'ready'}
               onClick={() => void run('ready', () => commands.setReady(!me?.ready))}
             >
-              {me?.ready ? 'Afinal, não estou pronto' : 'Estou pronto'}
+              {me?.ready
+                ? 'Afinal, não estou pronto'
+                : inPlay
+                  ? 'Estou pronto para a próxima'
+                  : 'Estou pronto'}
             </Button>
           )}
           <Button size="lg" variant="ghost" loading={busy === 'leave'} onClick={() => void leave()}>
@@ -199,12 +191,15 @@ export function RoomLobby({ room, selfId }: { room: RoomState; selfId: string })
 
 function PlayerRow({
   player,
+  playing,
   isHost,
   isSelf,
   canKick,
   onKick,
 }: {
   player: RoomPlayer;
+  /** In the match being played (seen by whoever waits for the next one). */
+  playing: boolean;
   isHost: boolean;
   isSelf: boolean;
   canKick: boolean;
@@ -212,11 +207,13 @@ function PlayerRow({
 }) {
   const state = !player.connected
     ? 'Desligado'
-    : isHost
-      ? 'Anfitrião'
-      : player.ready
-        ? 'Pronto'
-        : 'A preparar-se';
+    : playing
+      ? 'A jogar'
+      : isHost
+        ? 'Anfitrião'
+        : player.ready
+          ? 'Pronto'
+          : 'A preparar-se';
   return (
     <div className="flex h-[60px] items-center gap-3 rounded-xl bg-surface-2 px-3">
       <Avatar name={player.username} src={player.avatarUrl} size={36} dimmed={!player.connected} />
@@ -234,7 +231,13 @@ function PlayerRow({
         <p
           className={clsx(
             'text-xs',
-            !player.connected ? 'text-danger' : player.ready || isHost ? 'text-success' : 'text-subtle',
+            !player.connected
+              ? 'text-danger'
+              : playing
+                ? 'text-gold'
+                : player.ready || isHost
+                  ? 'text-success'
+                  : 'text-subtle',
           )}
         >
           {isHost && '👑 '}
@@ -251,6 +254,58 @@ function PlayerRow({
           Expulsar
         </button>
       )}
+    </div>
+  );
+}
+
+/** How the room's previous match ended, for everyone back in the room. */
+function LastResult({
+  result,
+  game,
+}: {
+  result: MatchResult | null;
+  game: GameClientDefinition | undefined;
+}) {
+  if (!result || result.standings.length === 0) return null;
+  return (
+    <div className="panel flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3 text-sm">
+      <span className="font-semibold text-gold">Última partida</span>
+      {game?.resultStyle === 'teams' ? (
+        <TeamsResult standings={result.standings} />
+      ) : (
+        result.standings.map((s) => (
+          <span key={s.playerId} className={s.outcome === 'LOSER' ? 'text-danger' : 'text-ivory/85'}>
+            {s.position !== undefined ? (
+              <span className="tabular-nums text-subtle">{s.position}.º </span>
+            ) : null}
+            {s.username}
+            {s.score !== undefined && (
+              <span className="tabular-nums text-subtle"> · {formatScore(game, s.score)}</span>
+            )}
+            {s.position === undefined && s.outcome === 'LOSER' && ' · perdeu'}
+          </span>
+        ))
+      )}
+    </div>
+  );
+}
+
+/** Seen by whoever came in while a match is played: they are in for the next one. */
+function MatchInPlay({ ready }: { ready: boolean }) {
+  return (
+    <div className="panel flex items-start gap-3.5 px-5 py-4" role="status">
+      <span className="relative mt-2 flex size-2 shrink-0" aria-hidden="true">
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-success/60" />
+        <span className="relative inline-flex size-2 rounded-full bg-success" />
+      </span>
+      <div>
+        <p className="font-semibold">Partida a decorrer</p>
+        <p className="mt-0.5 text-sm text-muted">
+          {ready
+            ? 'Estás pronto: jogas a próxima, que começa assim que o resto da mesa também estiver.'
+            : 'Jogas a próxima. Diz já que estás pronto e, quando esta acabar, só falta o resto da mesa.'}
+        </p>
+      </div>
     </div>
   );
 }

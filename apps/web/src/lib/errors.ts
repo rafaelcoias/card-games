@@ -10,6 +10,7 @@ const MESSAGES: Record<string, string> = {
   ROOM_NOT_FOUND: 'Não existe nenhuma sala com esse código.',
   ROOM_FULL: 'A sala está cheia.',
   ROOM_IN_PROGRESS: 'Já há uma partida a decorrer nesta sala.',
+  ROOM_CLOSING: 'Esta sala fecha quando acabar a partida em curso.',
   NOT_IN_ROOM: 'Não estás nesta sala.',
   NOT_HOST: 'Só o anfitrião pode fazer isso.',
   NOT_READY: 'Ainda há jogadores que não estão prontos (ou estão desligados).',

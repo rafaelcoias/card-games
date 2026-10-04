@@ -33,14 +33,29 @@ function lowestFreeSeat(room: RoomRecord): number {
   return seat;
 }
 
-/** Rooms in the lobby take players, and so do running SESSION tables (they sit down mid-session). */
+/**
+ * Rooms take players in the lobby and while a game is played: a SESSION table
+ * seats them at once, a MATCH has them wait for the next one. Not a room that
+ * closes as soon as the game in play ends, though: there would be no next one.
+ */
 export function acceptsPlayers(room: RoomRecord): boolean {
-  return room.status === 'OPEN' || (room.status === 'PLAYING' && room.lifecycle === 'SESSION');
+  return room.status !== 'CLOSED' && !closesAfterGame(room);
+}
+
+/** The game in play is the room's last: it reached its maximum age, or its host is gone. */
+export function closesAfterGame(room: RoomRecord): boolean {
+  return room.session !== null && (Boolean(room.closing) || hostGone(room));
+}
+
+/** Came in while a match was played: a member of the room, not a player of that match. */
+export function isWaiting(room: RoomRecord, userId: string): boolean {
+  return room.session !== null && !room.session.players.includes(userId);
 }
 
 export function addMember(room: RoomRecord, profile: MemberProfile): RoomMember {
-  if (!acceptsPlayers(room))
-    throw new AppError(ErrorCode.RoomInProgress, 'A match is already running in this room');
+  if (room.status === 'CLOSED') throw new AppError(ErrorCode.RoomNotFound, 'This room no longer exists');
+  if (closesAfterGame(room))
+    throw new AppError(ErrorCode.RoomClosing, 'This room closes when the game in play ends');
   if (room.members.length >= room.maxPlayers) throw new AppError(ErrorCode.RoomFull, 'The room is full');
   const member: RoomMember = {
     ...profile,
@@ -97,6 +112,18 @@ export function purgeLeftMembers(room: RoomRecord, stillSeated: readonly string[
 export function hostGone(room: RoomRecord): boolean {
   const host = findMember(room, room.hostId);
   return !host || host.left || host.away;
+}
+
+/**
+ * Ready (or not) for the next match: in the lobby, from the results, and
+ * while waiting for the match in play to end — its players say it once it is over.
+ */
+export function setMemberReady(room: RoomRecord, userId: string, ready: boolean): void {
+  const member = requireMember(room, userId);
+  if (room.status !== 'OPEN' && !isWaiting(room, userId)) {
+    throw new AppError(ErrorCode.RoomInProgress, 'The match already started');
+  }
+  member.ready = ready;
 }
 
 /**
@@ -233,7 +260,7 @@ export function assertCanKick(room: RoomRecord, hostId: string, targetId: string
   requireHost(room, hostId);
   if (targetId === hostId) throw new AppError(ErrorCode.CannotKick, 'You cannot kick yourself');
   const target = requireMember(room, targetId);
-  if (room.status === 'PLAYING' && target.connected) {
+  if (room.status === 'PLAYING' && target.connected && !isWaiting(room, targetId)) {
     throw new AppError(ErrorCode.CannotKick, 'During a match only disconnected players can be removed');
   }
   return target;
@@ -298,6 +325,7 @@ export function toRoomState(room: RoomRecord, gameName: string): RoomState {
       away: m.away,
       guest: m.guest === true,
       voice: m.voice === true,
+      waiting: isWaiting(room, m.id),
     })),
     config: room.config,
     matchId: room.session?.matchId ?? null,

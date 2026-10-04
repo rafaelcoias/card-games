@@ -64,3 +64,29 @@ export async function joinAndReady(page: Page, code: string): Promise<void> {
 export async function tap(page: Page, selector: string, index = 0): Promise<void> {
   await page.locator(selector).nth(index).dispatchEvent('click');
 }
+
+const pick = <T>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)] as T;
+
+/**
+ * Plays this player's move, if it is theirs: taps a card of the pond after
+ * "Vai à pesca!", or picks a player and a rank at random and asks. Clicks are
+ * dispatched to the element (like a tap): fanned cards cover each other.
+ */
+export async function takePeixinhoTurn(page: Page): Promise<boolean> {
+  const pond = page.getByRole('button', { name: /^Pescar esta carta do lago/ });
+  const spots = await pond.count();
+  if (spots > 0) {
+    await pond.nth(Math.floor(Math.random() * spots)).dispatchEvent('click');
+    return true;
+  }
+  const ranks = page.locator('[data-hand-card] [role="button"]:has([data-card-state="playable"])');
+  const targets = page.locator('button[data-ask-target]');
+  const [rankCount, targetCount] = [await ranks.count(), await targets.count()];
+  if (rankCount === 0 || targetCount === 0) return false;
+  await ranks.nth(pick([...Array(rankCount).keys()])).dispatchEvent('click');
+  if (targetCount > 1) await targets.nth(pick([...Array(targetCount).keys()])).dispatchEvent('click');
+  const confirm = page.getByRole('button', { name: /^Pedir .+ a .+$/ });
+  if (!(await confirm.isEnabled().catch(() => false))) return false;
+  await confirm.dispatchEvent('click');
+  return true;
+}

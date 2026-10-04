@@ -22,6 +22,11 @@ export interface RoomPlayer {
   guest: boolean;
   /** Microphone on: talking in the room's voice chat. */
   voice: boolean;
+  /**
+   * Came in while a match was being played: sits out until it ends and plays
+   * the next one (`ready` already says whether they are in for it).
+   */
+  waiting: boolean;
 }
 
 export interface PlayerStanding extends GameStanding {
@@ -127,7 +132,10 @@ export interface PublicRoomSummary {
   hostName: string;
   playerCount: number;
   maxPlayers: number;
-  /** A SESSION table already running, with a free seat to join straight away. */
+  /**
+   * A game is being played, and there is still a free seat: at a SESSION
+   * table newcomers sit down straight away, in a MATCH they play the next one.
+   */
   inProgress: boolean;
 }
 

@@ -6,6 +6,7 @@ import { OnlinePanel } from '@/components/players/online-panel';
 import { Button } from '@/components/ui/button';
 import { useDialog } from '@/components/ui/modal';
 import { Spinner } from '@/components/ui/spinner';
+import { findGameClient } from '@/games/registry';
 import { browserApi } from '@/lib/auth/client-token';
 import { usePolling } from '@/lib/use-polling';
 import { JoinByCode } from './join-by-code';
@@ -67,7 +68,10 @@ export function LobbyScreen() {
                         {room.gameName}
                         {room.inProgress && (
                           <span className="ml-2 rounded-full bg-success/15 px-2 py-0.5 align-middle text-[11px] font-semibold text-success">
-                            A decorrer · há lugar
+                            {/* A session table seats newcomers at once; a match has them play the next one. */}
+                            {findGameClient(room.gameId)?.lifecycle === 'SESSION'
+                              ? 'A decorrer · há lugar'
+                              : 'A decorrer · entras na próxima'}
                           </span>
                         )}
                       </p>

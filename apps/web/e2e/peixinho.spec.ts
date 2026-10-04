@@ -1,33 +1,7 @@
 import { expect, type Page } from '@playwright/test';
-import { joinAndReady, signIn, test, uniqueName } from './helpers';
+import { joinAndReady, signIn, takePeixinhoTurn, test, uniqueName } from './helpers';
 
 const RESULTS = { name: 'Voltar à sala' } as const;
-
-const pick = <T>(items: readonly T[]): T => items[Math.floor(Math.random() * items.length)] as T;
-
-/**
- * Plays this player's move, if it is theirs: taps a card of the pond after
- * "Vai à pesca!", or picks a player and a rank at random and asks. Clicks are
- * dispatched to the element (like a tap): fanned cards cover each other.
- */
-async function takeTurn(page: Page): Promise<boolean> {
-  const pond = page.getByRole('button', { name: /^Pescar esta carta do lago/ });
-  const spots = await pond.count();
-  if (spots > 0) {
-    await pond.nth(Math.floor(Math.random() * spots)).dispatchEvent('click');
-    return true;
-  }
-  const ranks = page.locator('[data-hand-card] [role="button"]:has([data-card-state="playable"])');
-  const targets = page.locator('button[data-ask-target]');
-  const [rankCount, targetCount] = [await ranks.count(), await targets.count()];
-  if (rankCount === 0 || targetCount === 0) return false;
-  await ranks.nth(pick([...Array(rankCount).keys()])).dispatchEvent('click');
-  if (targetCount > 1) await targets.nth(pick([...Array(targetCount).keys()])).dispatchEvent('click');
-  const confirm = page.getByRole('button', { name: /^Pedir .+ a .+$/ });
-  if (!(await confirm.isEnabled().catch(() => false))) return false;
-  await confirm.dispatchEvent('click');
-  return true;
-}
 
 test('three browsers play Peixinho to the 13th peixinho; a reload mid-match loses nothing', async ({
   browser,
@@ -64,7 +38,7 @@ test('three browsers play Peixinho to the 13th peixinho; a reload mid-match lose
   while (!(await host.getByRole('button', RESULTS).isVisible())) {
     expect(Date.now(), 'match should finish in time').toBeLessThan(deadline);
     let acted = false;
-    for (const page of pages) acted = (await takeTurn(page)) || acted;
+    for (const page of pages) acted = (await takePeixinhoTurn(page)) || acted;
 
     // Mid-match, one player reloads: same hand, same table.
     const rui = pages[1] as Page;

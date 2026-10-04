@@ -239,6 +239,7 @@ export function OlhoPreview() {
       away: false,
       guest: false,
       voice: false,
+      waiting: false,
     }));
     const timeout = engine.getTimeoutMs(state);
     return {

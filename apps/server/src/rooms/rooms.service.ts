@@ -34,6 +34,7 @@ import {
   removeMember,
   requireHost,
   requireMember,
+  setMemberReady,
   shuffleSeats,
   startsByItself,
   swapSeats,
@@ -121,6 +122,8 @@ export class RoomsService implements OnModuleInit {
     return this.store.mutate(roomId, async (room, effects) => {
       const existing = findMember(room, user.id);
       const returning = existing?.left ?? false;
+      const wasAway = existing?.away ?? false;
+      // A running match has newcomers wait for the next one (and plays on untouched).
       const member = existing ?? addMember(room, user);
       if (existing) markPresent(existing);
       await this.store.setUserRoom(user.id, room.id);
@@ -128,7 +131,7 @@ export class RoomsService implements OnModuleInit {
       // A running session table seats newcomers, and takes back whoever had got up.
       if (!existing || returning) await this.sessions.seatPlayer(room, member, effects);
       if (existing) this.sessions.playerReturned(room, user.id, effects);
-      if (existing) this.sessions.onPresenceChanged(room, effects);
+      if (wasAway) this.sessions.onPresenceChanged(room, effects);
       this.sessions.sendSnapshot(room, user.id, effects);
       effects.defer(() => this.publisher.publishRoom(room));
       return { room: this.publisher.roomState(room), chat: room.chat };
@@ -143,12 +146,12 @@ export class RoomsService implements OnModuleInit {
 
   /**
    * Ready in the lobby — or, from the results, "play again": once everyone at
-   * the table (host included) wants a rematch, it starts by itself.
+   * the table (host included) wants a rematch, it starts by itself. Whoever
+   * waits for the match in play to end says it beforehand.
    */
   async setReady(userId: string, ready: boolean): Promise<void> {
     await this.mutateCurrent(userId, async (room, effects) => {
-      if (room.status !== 'OPEN') throw new AppError(ErrorCode.RoomInProgress, 'The match already started');
-      requireMember(room, userId).ready = ready;
+      setMemberReady(room, userId, ready);
       const module = this.registry.require(room.gameId);
       const max = Math.min(module.maxPlayers, room.maxPlayers);
       if (startsByItself(room, module.minPlayers, max, module.seating?.seats.length)) {
@@ -389,6 +392,8 @@ export class RoomsService implements OnModuleInit {
   ): void {
     const roomId = room.id;
     const wasHost = room.hostId === userId;
+    // Someone waiting for the next match leaves the one in play untouched (its timers included).
+    const wasPlaying = room.session?.players.includes(userId) ?? false;
     removeMember(room, userId);
     effects.defer(() => this.store.clearUserRoom(userId, roomId));
     effects.defer(() => this.emitter.unsubscribeUserFromRoom(userId, roomId));
@@ -403,7 +408,7 @@ export class RoomsService implements OnModuleInit {
     if (wasHost) this.sessions.hostLeft(room, effects);
     this.sessions.playerAbsent(room, userId, effects);
     if (room.status === 'OPEN' && isEmpty(room)) room.status = 'CLOSED';
-    this.sessions.onPresenceChanged(room, effects);
+    if (wasPlaying) this.sessions.onPresenceChanged(room, effects);
 
     if (room.status === 'CLOSED') {
       effects.defer(() => this.roomsRepository.setStatus(roomId, 'CLOSED'));

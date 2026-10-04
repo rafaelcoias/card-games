@@ -138,6 +138,7 @@ export function SuecaPreview() {
       away: false,
       guest: false,
       voice: false,
+      waiting: false,
     }));
     return {
       scene: sceneFromView(`dev-${scenario.label}`, 1, view),

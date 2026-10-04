@@ -109,6 +109,7 @@ export function MexicanaPreview() {
       away: false,
       guest: false,
       voice: false,
+      waiting: false,
     }));
     return {
       scene: sceneFromView(`dev-${scenario.label}`, 1, engine.getPlayerView(state, ME)),

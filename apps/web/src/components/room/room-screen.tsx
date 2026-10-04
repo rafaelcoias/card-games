@@ -69,7 +69,9 @@ export function RoomScreen({ code }: { code: string }) {
     );
   }
 
-  const showTable = room.status === 'PLAYING' || result !== null;
+  // Whoever came in during a match waits for the next one in the room, not at the table.
+  const waiting = room.players.find((p) => p.id === profile.id)?.waiting === true;
+  const showTable = (room.status === 'PLAYING' && !waiting) || result !== null;
   return (
     <>
       <VoiceChat room={room} selfId={profile.id} />
