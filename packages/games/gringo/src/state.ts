@@ -40,6 +40,10 @@ export function currentPlayerId(state: GringoState): PlayerId | null {
     : null;
 }
 
+/** After a hit on another player's card: the snapper, who owes them one of their cards. */
+export const giverOf = (state: GringoState): PlayerId | null =>
+  state.phase === 'SNAP_GIVE' ? (state.snap?.result?.playerId ?? null) : null;
+
 /** The other players who still hold a card: the only ones a power may target (rules §8). */
 export const targetsOf = (state: GringoState, playerId: PlayerId): PlayerId[] =>
   state.seats.filter((id) => id !== playerId && hasCards(state, id));

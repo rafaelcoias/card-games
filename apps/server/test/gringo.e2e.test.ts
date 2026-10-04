@@ -2,7 +2,8 @@
  * Gringo over Socket.IO against a RUNNING server (see multiplayer.e2e.test.ts):
  * four players. At the first discard all four snap at the same instant: the
  * room's single queue must accept exactly one. Then they play to the end —
- * swapping, using powers, snapping what they remember, saying "Gringo" — with a
+ * swapping, using powers, snapping what they remember (and now and then a guess
+ * at anyone's card, giving one back on a hit), saying "Gringo" — with a
  * reconnect in the middle of a power. Nobody may ever receive the face of a
  * card they are not allowed to see at that moment.
  */
@@ -50,12 +51,23 @@ function chooseFor(botId: string) {
     const snaps = of('SNAP');
     if (snaps.length > 0) {
       const top = view.discardTop;
-      const known = snaps.find((a) => top && mine.get(a.index)?.rank === top.rank);
+      const known = snaps.find(
+        (a) => (a.owner ?? botId) === botId && top && mine.get(a.index)?.rank === top.rank,
+      );
       if (known && Math.random() < 0.8) {
         mine.delete(known.index);
         return known;
       }
-      return Math.random() < 0.02 ? (pick(snaps) ?? null) : null;
+      // Now and then a guess, at anyone's card.
+      return Math.random() < 0.03 ? (pick(snaps) ?? null) : null;
+    }
+    // Snapped someone else's card: give away the worst card remembered (or any).
+    const gives = of('SNAP_GIVE');
+    if (gives.length > 0) {
+      const worst = gives.find((a) => mine.has(a.index) && !low(mine.get(a.index) ?? null));
+      const give = worst ?? pick(gives)!;
+      mine.delete(give.index);
+      return give;
     }
     if (of('PEEK_DONE').length > 0) return { type: 'PEEK_DONE' };
     if (of('CALL_GRINGO').length > 0 && Math.random() < 0.25) return { type: 'CALL_GRINGO' };
@@ -187,7 +199,7 @@ describe('multiplayer Gringo over Socket.IO', () => {
             const missed =
               view.snap?.result &&
               !view.snap.result.hit &&
-              view.snap.result.playerId === seat.id &&
+              view.snap.result.owner === seat.id &&
               view.snap.result.index === slot.index;
             const peeked = view.peek && view.peek.owner === seat.id && view.peek.index === slot.index;
             const initial = view.phase === 'INITIAL_PEEK' && seat.id === bot.id && slot.index >= 2;
@@ -203,7 +215,9 @@ describe('multiplayer Gringo over Socket.IO', () => {
     }
     expect(audited).toBeGreaterThan(0);
     for (const event of events) {
-      if (['Drew', 'Peeked', 'BlindSwapped', 'PeekSwapDecided', 'TurnStarted'].includes(event.type)) {
+      if (
+        ['Drew', 'Peeked', 'BlindSwapped', 'PeekSwapDecided', 'CardGiven', 'TurnStarted'].includes(event.type)
+      ) {
         expect(JSON.stringify(event)).not.toMatch(/"uid"/);
       }
     }

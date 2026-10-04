@@ -16,7 +16,7 @@ import {
   type GringoState,
 } from '@cardroom/gringo';
 import { describe, expect, it } from 'vitest';
-import { peekCaption, swapCaption } from './table';
+import { giveCaption, peekCaption, snapCaption, swapCaption } from './table';
 import { gridBox, slotCell } from './layout';
 import { applyEvent, sceneFromView, type Scene } from './scene';
 
@@ -108,6 +108,18 @@ describe('gringo scene', () => {
     expect(animated.snap).toMatchObject({ open: true });
   });
 
+  it('a card with a power swapped out of the grid starts that power for the player', () => {
+    const run = new Run(['5H']);
+    run.act({ type: 'SYS_INITIAL_PEEK_END' });
+    run.act({ type: 'DRAW' }, ME);
+    // Ana's [2] is the K♥: out it goes, and the king's power is hers to use.
+    const animated = run.act({ type: 'SWAP_DRAWN', index: 1 }, ME);
+    expect(animated.discard.top?.card.id).toBe('KH');
+    expect(animated.phase).toBe('POWER');
+    expect(animated.power).toMatchObject({ playerId: ME, type: 'PEEK_AND_SWAP', step: 'CHOOSE' });
+    expect(run.engine.getValidActions(run.state, ME)).toContainEqual({ type: 'POWER_SKIP' });
+  });
+
   it('a blind swap trades the tokens of the two slots, so both cards glide', () => {
     const run = new Run(['JH']);
     run.act({ type: 'SYS_INITIAL_PEEK_END' });
@@ -175,6 +187,39 @@ describe('gringo scene', () => {
     expect(animated.seats[1]!.slots[3]).toMatchObject({ token: null, face: null });
     expect(animated.discard.top).toMatchObject({ token, card: { id: '10D' } });
     expect(animated.discard.under.map((c) => c.id)).toEqual(['10S']);
+  });
+
+  it("a hit on another's card: theirs flies to the discard pile, then the card given glides into the gap", () => {
+    const run = new Run(['6H', '5C']);
+    run.act({ type: 'SYS_INITIAL_PEEK_END' });
+    run.act({ type: 'DRAW' }, ME);
+    run.act({ type: 'DISCARD_DRAWN', usePower: false }, ME);
+    const snapped = run.tokenAt('carla', 0);
+    const given = run.tokenAt('bruno', 3);
+    const hit = run.act({ type: 'SNAP', discardId: 1, owner: 'carla', index: 0 }, 'bruno');
+    expect(hit.phase).toBe('SNAP_GIVE');
+    expect(hit.seats[2]!.slots[0]).toMatchObject({ token: null, face: null });
+    expect(hit.seats[2]!.cardCount).toBe(3);
+    expect(hit.discard.top).toMatchObject({ token: snapped, card: { id: '6D' } });
+
+    const gave = run.act({ type: 'SNAP_GIVE', index: 3 }, 'bruno');
+    expect(gave.phase).toBe('SNAP_WINDOW');
+    expect(run.tokenAt('carla', 0)).toBe(given);
+    expect(run.tokenAt('bruno', 3)).toBeNull();
+    expect(gave.seats.map((s) => s.cardCount)).toEqual([4, 3, 4]);
+    expect(gave.moved).toEqual([{ owner: 'carla', index: 0 }]);
+  });
+
+  it('the viewer who snapped another’s card is offered their own cards to give', () => {
+    const run = new Run(['6H', '5C']);
+    run.act({ type: 'SYS_INITIAL_PEEK_END' });
+    run.act({ type: 'DRAW' }, ME);
+    run.act({ type: 'DISCARD_DRAWN', usePower: false }, ME);
+    run.act({ type: 'SNAP', discardId: 1, owner: 'carla', index: 0 }, ME);
+    expect(run.engine.getValidActions(run.state, ME)).toEqual(
+      [0, 1, 2, 3].map((index) => ({ type: 'SNAP_GIVE', index })),
+    );
+    expect(run.scene.snap?.result).toMatchObject({ playerId: ME, owner: 'carla', given: null });
   });
 
   it('turns every grid over at the end, one player after the other', () => {
@@ -251,5 +296,19 @@ describe('gringo layout and copy', () => {
     expect(peekCaption('bruno', 'bruno', 2, ME, name)).toBe('bruno espreitou a sua carta [3].');
     expect(swapCaption('bruno', 0, 'carla', 1, ME, name)).toBe('bruno trocou a sua [1] com a [2] de carla.');
     expect(swapCaption(ME, 3, 'bruno', 0, ME, name)).toBe('Trocaste a tua [4] com a [1] de bruno.');
+  });
+
+  it("names whose card was snapped, and the card given back, from the viewer's side", () => {
+    const name = (id: string) => (id === ME ? 'Tu' : id);
+    expect(snapCaption(ME, ME, 2, ME, name)).toBe('Bateste a tua [3]!');
+    expect(snapCaption(ME, 'bruno', 1, ME, name)).toBe('Bateste a [2] de bruno!');
+    expect(snapCaption('bruno', 'bruno', 0, ME, name)).toBe('bruno bateu a sua [1]!');
+    expect(snapCaption('bruno', ME, 3, ME, name)).toBe('bruno bateu a tua [4]!');
+    expect(snapCaption('bruno', 'carla', 0, ME, name)).toBe('bruno bateu a [1] de carla!');
+    expect(giveCaption(ME, 3, 'bruno', 0, ME, name)).toBe('Deste a tua [4] a bruno: fica no lugar [1].');
+    expect(giveCaption('bruno', 1, ME, 2, ME, name)).toBe('bruno deu-te a sua [2]: fica na tua [3].');
+    expect(giveCaption('bruno', 1, 'carla', 2, ME, name)).toBe(
+      'bruno deu a sua [2] a carla: fica no lugar [3].',
+    );
   });
 });

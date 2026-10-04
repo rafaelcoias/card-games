@@ -106,6 +106,7 @@ const MESSAGES: Record<string, string> = {
   WRONG_TARGET: 'Essa carta não serve para este poder.',
   SNAP_CLOSED: 'Tarde demais: já não se pode bater nessa carta.',
   SNAP_TAKEN: 'Alguém bateu primeiro.',
+  NO_CARD_TO_GIVE: 'Para bater a carta de outro jogador, precisas de uma carta tua para lhe dar.',
   STALE_WINDOW: 'Essa janela já fechou.',
   // Sueca engine
   NOT_CUTTER: 'Quem corta é outro jogador.',

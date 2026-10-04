@@ -20,10 +20,11 @@ import {
  * How a slot reacts to a tap. The choices glow and say what the tap does:
  * `swap` puts the drawn card there (or, after a king's peek, takes the card
  * seen), `peek` looks at it, `pick` chooses it for a jack's swap, `snap`
- * arms a snap. `selected` is the first half of a jack's swap; `armed` waits
- * for the second tap that confirms a snap (UI §6).
+ * arms a snap (on one's own card or another player's), `give` hands it to the
+ * player whose card was just snapped. `selected` is the first half of a jack's
+ * swap; `armed` waits for the second tap that confirms a snap (UI §6).
  */
-export type SlotMode = 'none' | 'swap' | 'peek' | 'pick' | 'snap' | 'selected' | 'armed';
+export type SlotMode = 'none' | 'swap' | 'peek' | 'pick' | 'snap' | 'give' | 'selected' | 'armed';
 
 /** What a tap on a glowing slot will do, as a badge on its corner. */
 const INTENT: Partial<Record<SlotMode, { icon: string; tone: string }>> = {
@@ -31,6 +32,7 @@ const INTENT: Partial<Record<SlotMode, { icon: string; tone: string }>> = {
   pick: { icon: '⇄', tone: 'bg-gold text-gold-ink' },
   peek: { icon: '👁', tone: 'bg-ink text-ivory ring-1 ring-gold/70' },
   snap: { icon: '✋', tone: 'bg-danger text-white' },
+  give: { icon: '🎁', tone: 'bg-gold text-gold-ink' },
 };
 
 export interface GridProps {
@@ -54,6 +56,8 @@ export interface GridProps {
   flash?: { index: number; hit: boolean } | null;
   /** Slots whose card just changed (a swap): outlined until the next turn. */
   moved?: ReadonlySet<number>;
+  /** "Bater?" over a slot armed for a snap (off where the coach already says it). */
+  armedLabel?: boolean;
 }
 
 /**
@@ -74,6 +78,7 @@ export const Grid = memo(function Grid({
   redKingValue = null,
   flash = null,
   moved,
+  armedLabel = true,
 }: GridProps) {
   const reduced = useReducedMotion() ?? false;
   const width = CARD_WIDTH[size];
@@ -194,7 +199,7 @@ export const Grid = memo(function Grid({
                 {intent ? intent.icon : '⇄'}
               </span>
             )}
-            {mode === 'armed' && (
+            {mode === 'armed' && armedLabel && (
               <motion.span
                 aria-hidden="true"
                 className="pointer-events-none absolute -top-9 left-1/2 z-[4] -translate-x-1/2 whitespace-nowrap rounded-full bg-danger px-2 py-0.5 text-[11px] font-black uppercase tracking-wide text-white shadow-lg"

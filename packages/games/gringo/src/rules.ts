@@ -22,6 +22,8 @@ export const PACE = {
   snapHit: 1100,
   /** A missed snap: the card is shown to everyone (1.5 s), goes back, a penalty card comes in. */
   snapMiss: 2300,
+  /** After snapping another player's card: the card given glides into their empty slot, and lands. */
+  give: 1400,
 } as const;
 
 /** Rules §6: the default "figures" set, or the same four powers on 7 to 10. */

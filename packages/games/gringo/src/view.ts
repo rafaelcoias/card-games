@@ -12,7 +12,7 @@ import type { GringoState, GringoView, Slot } from './types';
 function visible(state: GringoState, viewer: PlayerId | null, owner: PlayerId, slot: Slot): boolean {
   if (state.phase === 'FINISHED') return true;
   const missed = state.snap?.result;
-  if (missed && !missed.hit && missed.playerId === owner && missed.index === slot.index) return true;
+  if (missed && !missed.hit && missed.owner === owner && missed.index === slot.index) return true;
   if (viewer === null) return false;
   if (state.phase === 'INITIAL_PEEK') {
     return viewer === owner && !state.peekDone.includes(viewer) && INITIAL_PEEK_INDEXES.includes(slot.index);

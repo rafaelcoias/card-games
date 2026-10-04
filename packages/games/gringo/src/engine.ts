@@ -25,6 +25,7 @@ import {
 import {
   canCallGringo,
   currentPlayerId,
+  giverOf,
   gridOf,
   hasCards,
   nextIndex,
@@ -42,7 +43,9 @@ import type {
   GringoEvent,
   GringoState,
   GringoSystemAction,
+  PowerType,
   RevealedGrid,
+  SnapResult,
 } from './types';
 
 type Result = ActionResult<GringoState, GringoEvent>;
@@ -189,9 +192,12 @@ function applySystem(d: Draft, action: GringoSystemAction): Failure | null {
 function applyPlayer(d: Draft, action: GringoClientAction, playerId: PlayerId): Failure | null {
   const { s } = d;
   if (!s.seats.includes(playerId)) return failure('UNKNOWN_PLAYER', 'Player is not part of this game');
-  // Out of turn: everyone memorises at once, and anyone may snap.
+  // Out of turn: everyone memorises at once, anyone may snap, and a snapper owes a card.
   if (action.type === 'PEEK_DONE') return peekDone(d, playerId);
-  if (action.type === 'SNAP') return snap(d, playerId, action.discardId, action.index);
+  if (action.type === 'SNAP') {
+    return snap(d, playerId, action.discardId, action.owner ?? playerId, action.index);
+  }
+  if (action.type === 'SNAP_GIVE') return give(d, playerId, action.index);
   if (currentPlayerId(s) !== playerId) return failure('NOT_YOUR_TURN', 'It is not your turn');
   switch (action.type) {
     case 'CALL_GRINGO':
@@ -283,7 +289,11 @@ function draw(d: Draft, playerId: PlayerId): Failure | null {
   return null;
 }
 
-/** The drawn card takes the slot, face down; the card that was there goes to the discard pile, face up. */
+/**
+ * The drawn card takes the slot, face down; the card that was there goes to
+ * the discard pile, face up. If that card has a power, the player may use it
+ * (or give it up with `POWER_SKIP`), as with a drawn card discarded straight away.
+ */
 function swapDrawn(d: Draft, playerId: PlayerId, index: number): Failure | null {
   const { s } = d;
   if (s.phase !== 'TURN_DECIDE' || !s.drawn) return failure('WRONG_PHASE', 'Draw a card first');
@@ -293,9 +303,10 @@ function swapDrawn(d: Draft, playerId: PlayerId, index: number): Failure | null 
   slot.card = s.drawn;
   s.drawn = null;
   s.discard.push(discarded);
-  d.events.push({ type: 'Swapped', playerId, index, discarded });
-  // A power card that leaves a grid by a swap has no power (open point #3).
-  openSnapWindow(d);
+  const offered = powerOf(discarded, s.config.powerSet);
+  const power = offered && powerUsable(s, playerId, offered) ? offered : null;
+  d.events.push({ type: 'Swapped', playerId, index, discarded, power });
+  startPowerOrWindow(d, power);
   return null;
 }
 
@@ -312,13 +323,15 @@ function discardDrawn(d: Draft, playerId: PlayerId, usePower: boolean): Failure 
   s.drawn = null;
   s.discard.push(card);
   d.events.push({ type: 'DiscardedDrawn', playerId, card, power });
-  if (power) {
-    s.phase = 'POWER';
-    s.power = { type: power, step: 'CHOOSE', peeked: null };
-  } else {
-    openSnapWindow(d);
-  }
+  startPowerOrWindow(d, power);
   return null;
+}
+
+/** The card the player on turn just discarded: its power first, if any, then the snap window (rules §6, §7). */
+function startPowerOrWindow(d: Draft, power: PowerType | null): void {
+  if (!power) return openSnapWindow(d);
+  d.s.phase = 'POWER';
+  d.s.power = { type: power, step: 'CHOOSE', peeked: null };
 }
 
 /** 10 / queen / first step of the king: one card is turned for the player alone. */
@@ -418,33 +431,79 @@ function openSnapWindow(d: Draft, leadMs = 0): void {
  * Rules §7: the first snap on a discard wins the race (the room's single queue
  * orders them) and closes it for everyone. Same rank: the card goes to the
  * discard pile and the slot stays empty. Another rank: the card is shown, goes
- * back, and a penalty card comes face down into a new slot (open point #5).
+ * back, and a penalty card comes face down into a new slot of the snapper's
+ * grid (open point #5).
+ *
+ * The card may be another player's: on a hit, the snapper then gives them one
+ * of their own cards for the slot left empty (`SNAP_GIVE`), so it is the
+ * snapper who ends up with a card fewer.
  */
-function snap(d: Draft, playerId: PlayerId, discardId: number, index: number): Failure | null {
+function snap(
+  d: Draft,
+  playerId: PlayerId,
+  discardId: number,
+  owner: PlayerId,
+  index: number,
+): Failure | null {
   const { s } = d;
   const window = s.snap;
   if (s.phase !== 'SNAP_WINDOW' || !window || window.discardId !== discardId) {
     return failure('SNAP_CLOSED', 'Too late: that card can no longer be snapped');
   }
   if (window.result) return failure('SNAP_TAKEN', 'Someone already snapped that card');
-  const slot = slotAt(s, playerId, index);
+  if (!s.seats.includes(owner)) return failure('UNKNOWN_TARGET', 'That player is not at the table');
+  const theirs = owner !== playerId;
+  if (theirs && !hasCards(s, playerId)) {
+    return failure('NO_CARD_TO_GIVE', "Snapping another player's card takes a card of your own to give");
+  }
+  const slot = slotAt(s, owner, index);
   if (!slot?.card) return failure('EMPTY_SLOT', 'There is no card in that position');
   const card = slot.card;
   const top = s.discard.at(-1) as CardInstance;
   if (sameRank(card, top)) {
     slot.card = null;
     s.discard.push(card);
-    window.result = { playerId, index, card, hit: true, penaltyIndex: null };
-    d.events.push({ type: 'SnapSucceeded', discardId, playerId, index, card });
-    if (!hasCards(s, playerId)) d.events.push({ type: 'PlayerOut', playerId });
+    window.result = { playerId, owner, index, card, hit: true, penaltyIndex: null, given: null };
+    d.events.push({ type: 'SnapSucceeded', discardId, playerId, owner, index, card });
+    if (theirs) s.phase = 'SNAP_GIVE';
+    else if (!hasCards(s, playerId)) d.events.push({ type: 'PlayerOut', playerId });
     return null;
   }
   const penalty = s.deck.shift();
   const grid = gridOf(s, playerId);
   const penaltyIndex = penalty ? nextIndex(grid) : null;
   if (penalty) grid.push({ index: penaltyIndex as number, card: penalty });
-  window.result = { playerId, index, card, hit: false, penaltyIndex };
-  d.events.push({ type: 'SnapFailed', discardId, playerId, index, card, penaltyIndex });
+  window.result = { playerId, owner, index, card, hit: false, penaltyIndex, given: null };
+  d.events.push({ type: 'SnapFailed', discardId, playerId, owner, index, card, penaltyIndex });
+  return null;
+}
+
+/**
+ * After a hit on another player's card: the snapper's card `index` goes, face
+ * down and unseen, to the exact slot that was emptied; the snapper's slot stays empty.
+ */
+function give(d: Draft, playerId: PlayerId, index: number): Failure | null {
+  const { s } = d;
+  const window = s.snap;
+  const result = window?.result;
+  if (s.phase !== 'SNAP_GIVE' || !window || !result) return failure('WRONG_PHASE', 'You owe nobody a card');
+  if (result.playerId !== playerId) return failure('NOT_YOUR_TURN', 'Only who snapped gives a card');
+  const mine = slotAt(s, playerId, index);
+  const gap = slotAt(s, result.owner, result.index);
+  if (!mine?.card || !gap) return failure('EMPTY_SLOT', 'There is no card in that position');
+  gap.card = mine.card;
+  mine.card = null;
+  result.given = index;
+  s.phase = 'SNAP_WINDOW';
+  d.events.push({
+    type: 'CardGiven',
+    discardId: window.discardId,
+    playerId,
+    index,
+    owner: result.owner,
+    ownerIndex: result.index,
+  });
+  if (!hasCards(s, playerId)) d.events.push({ type: 'PlayerOut', playerId });
   return null;
 }
 
@@ -505,11 +564,12 @@ export const resultOf = (state: GringoState) => ({ standings: standings(scoresOf
 /**
  * Rules §12, when the clock runs out: a turn not drawn yet draws and discards
  * the card; a drawn card is discarded, without its power; a power is given up
- * (the king's swap is not made); a player without cards lets the turn go.
+ * (the king's swap is not made); a player without cards lets the turn go; a
+ * snapper owing a card gives their first one.
  */
 function timeout(d: Draft): Failure | null {
   const { s } = d;
-  const current = currentPlayerId(s);
+  const current = currentPlayerId(s) ?? giverOf(s);
   if (!current) return failure('WRONG_PHASE', 'Nobody is on the clock');
   if (s.phase === 'TURN_DRAW' && hasCards(s, current)) {
     const drew = draw(d, current);
@@ -521,16 +581,23 @@ function timeout(d: Draft): Failure | null {
   return applyPlayer(d, fallback, current);
 }
 
+/** How long the snap window stays once settled: the snap, and any card given after it, play out on screen. */
+function settleMs(result: SnapResult): number {
+  if (result.given !== null) return PACE.give;
+  return result.hit ? PACE.snapHit : PACE.snapMiss;
+}
+
 /**
  * The engine's own pauses, derived from the state after every action (a
  * schedule is dropped as soon as anything else happens): the snap window, the
- * moment a missed or good snap stays on screen, and a power's peek.
+ * moment a missed or good snap (or a card given) stays on screen, and a
+ * power's peek. A snapper owing a card is on the clock instead.
  */
 export function scheduleFor(state: GringoState): ScheduledAction[] {
   const at = (action: GringoSystemAction, delayMs: number): ScheduledAction[] => [{ action, delayMs }];
   if (state.phase === 'SNAP_WINDOW' && state.snap) {
     const { discardId, leadMs, result } = state.snap;
-    const delay = !result ? leadMs + state.config.snapWindowMs : result.hit ? PACE.snapHit : PACE.snapMiss;
+    const delay = result ? settleMs(result) : leadMs + state.config.snapWindowMs;
     return at({ type: 'SYS_SNAP_WINDOW_CLOSED', discardId }, delay);
   }
   if (state.phase === 'POWER' && state.power?.step === 'PEEKED' && state.power.type !== 'PEEK_AND_SWAP') {

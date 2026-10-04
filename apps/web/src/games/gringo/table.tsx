@@ -39,9 +39,17 @@ import {
 } from './copy';
 import type { SlotMode } from './grid';
 import { gringoSizes, seatBox, type Sizes } from './layout';
-import { applyEvent, dealDurationMs, mySeat, sceneFromView, type Fx, type Scene } from './scene';
+import {
+  applyEvent,
+  dealDurationMs,
+  mySeat,
+  sceneFromView,
+  type Fx,
+  type Scene,
+  type SlotRef,
+} from './scene';
 import { Seat, type Stamp } from './seat';
-import { ActionBar, MyGrid, type Coach } from './self-area';
+import { ActionBar, MyGrid, Prompts, type Coach } from './self-area';
 
 const BUBBLE_MS = 1600;
 const STAMP_MS = 1500;
@@ -85,6 +93,43 @@ export function swapCaption(
   return playerId === selfId
     ? `Trocaste a tua ${slotLabel(myIndex)} com ${theirs}.`
     : `${nameOf(playerId)} trocou a sua ${slotLabel(myIndex)} com ${theirs}.`;
+}
+
+/** "Bateste a [2] de Ana!", "Rui bateu a tua [2]!", "Rui bateu a sua [1]!" */
+export function snapCaption(
+  playerId: PlayerId,
+  owner: PlayerId,
+  index: number,
+  selfId: string,
+  nameOf: (id: PlayerId) => string,
+): string {
+  const label = slotLabel(index);
+  if (playerId === selfId) {
+    return owner === selfId ? `Bateste a tua ${label}!` : `Bateste a ${label} de ${nameOf(owner)}!`;
+  }
+  const whose =
+    owner === playerId
+      ? `a sua ${label}`
+      : owner === selfId
+        ? `a tua ${label}`
+        : `a ${label} de ${nameOf(owner)}`;
+  return `${nameOf(playerId)} bateu ${whose}!`;
+}
+
+/** "Deste a tua [4] a Ana: fica no lugar [1].", "Rui deu-te a sua [4]: fica na tua [1]." */
+export function giveCaption(
+  playerId: PlayerId,
+  index: number,
+  owner: PlayerId,
+  ownerIndex: number,
+  selfId: string,
+  nameOf: (id: PlayerId) => string,
+): string {
+  const card = slotLabel(index);
+  const into = slotLabel(ownerIndex);
+  if (playerId === selfId) return `Deste a tua ${card} a ${nameOf(owner)}: fica no lugar ${into}.`;
+  if (owner === selfId) return `${nameOf(playerId)} deu-te a sua ${card}: fica na tua ${into}.`;
+  return `${nameOf(playerId)} deu a sua ${card} a ${nameOf(owner)}: fica no lugar ${into}.`;
 }
 
 export function GringoTable({ room, selfId, sendAction }: GameTableProps) {
@@ -177,21 +222,20 @@ export function GringoTable({ room, selfId, sendAction }: GameTableProps) {
           break;
         case 'snapHit':
           playSound('snap');
-          stampOn(fx.playerId, fx.index, true);
-          announce(
-            me(fx.playerId)
-              ? `Bateste a tua ${slotLabel(fx.index)}!`
-              : `${nameOf(fx.playerId)} bateu a ${slotLabel(fx.index)}!`,
-            1800,
-          );
+          stampOn(fx.owner, fx.index, true);
+          announce(snapCaption(fx.playerId, fx.owner, fx.index, selfId, nameOf), 1800);
           break;
         case 'snapMiss':
           playSound('doubt');
-          stampOn(fx.playerId, fx.index, false);
+          stampOn(fx.owner, fx.index, false);
           announce(
-            `${me(fx.playerId) ? 'Erraste' : `${nameOf(fx.playerId)} errou`}${fx.penalty ? ' — leva mais uma carta' : ''}`,
+            `${me(fx.playerId) ? 'Erraste' : `${nameOf(fx.playerId)} errou`}${fx.penalty ? ` — ${me(fx.playerId) ? 'levas' : 'leva'} mais uma carta` : ''}`,
             2000,
           );
+          break;
+        case 'gave':
+          playSound('play');
+          announce(giveCaption(fx.playerId, fx.index, fx.owner, fx.ownerIndex, selfId, nameOf), 2200);
           break;
         case 'out':
           announce(
@@ -286,14 +330,16 @@ export interface GringoTableViewProps {
 }
 
 const key = (owner: PlayerId, index: number) => `${owner}:${index}`;
+const isAt = (ref: SlotRef | null, owner: PlayerId, index: number) =>
+  ref !== null && ref.owner === owner && ref.index === index;
 
 interface Picks {
   key: string;
   /** Jack: the viewer's card and the other player's, in whichever order they were tapped. */
   mine: number | null;
-  theirs: { owner: PlayerId; index: number } | null;
-  /** A snap waiting for its confirming second tap (UI §6). */
-  armed: number | null;
+  theirs: SlotRef | null;
+  /** A snap waiting for its confirming second tap (UI §6): one's own card, or another player's. */
+  armed: SlotRef | null;
 }
 
 export function GringoTableView({
@@ -326,7 +372,14 @@ export function GringoTableView({
     [actions],
   );
   const snaps = useMemo(
-    () => new Map(actions.flatMap((a) => (a.type === 'SNAP' ? [[a.index, a] as const] : []))),
+    () =>
+      new Map(
+        actions.flatMap((a) => (a.type === 'SNAP' ? [[key(a.owner ?? selfId, a.index), a] as const] : [])),
+      ),
+    [actions, selfId],
+  );
+  const gives = useMemo(
+    () => new Set(actions.flatMap((a) => (a.type === 'SNAP_GIVE' ? [a.index] : []))),
     [actions],
   );
   const peeks = useMemo(
@@ -353,8 +406,9 @@ export function GringoTableView({
 
   // Choices in progress belong to one decision: a new one starts clean.
   const decisionKey = `${scene.matchId}:${scene.turn}:${scene.phase}:${scene.power?.step ?? ''}:${scene.snap?.discardId ?? ''}`;
-  const current =
+  const current: Picks =
     picks.key === decisionKey ? picks : { key: decisionKey, mine: null, theirs: null, armed: null };
+  const clean: Picks = { key: decisionKey, mine: null, theirs: null, armed: null };
 
   const send = useCallback(
     async (action: GringoClientAction) => {
@@ -367,52 +421,51 @@ export function GringoTableView({
     [canAct, sendAction],
   );
 
-  const pickBlind = (mine: number | null, theirs: Picks['theirs']) => {
+  const pickBlind = (mine: number | null, theirs: SlotRef | null) => {
     if (mine !== null && theirs) {
-      setPicks({ key: decisionKey, mine: null, theirs: null, armed: null });
+      setPicks(clean);
       void send({ type: 'POWER_BLIND_SWAP', myIndex: mine, owner: theirs.owner, theirIndex: theirs.index });
       return;
     }
-    setPicks({ key: decisionKey, mine, theirs, armed: null });
+    setPicks({ ...clean, mine, theirs });
   };
 
-  const myMode = (index: number): SlotMode => {
-    if (snaps.has(index)) return current.armed === index ? 'armed' : 'snap';
-    if (swapInto.has(index) || kingSwaps.has(index)) return 'swap';
-    if (peeks.has(key(selfId, index))) return 'peek';
-    if (blindMine.has(index)) return current.mine === index ? 'selected' : 'pick';
-    return 'none';
-  };
-  const onMine = (index: number) => {
-    const snap = snaps.get(index);
-    if (snap) {
-      if (current.armed === index) {
-        setPicks({ key: decisionKey, mine: null, theirs: null, armed: null });
-        void send(snap);
-      } else setPicks({ ...current, armed: index });
-      return;
-    }
-    if (swapInto.has(index)) return void send({ type: 'SWAP_DRAWN', index });
-    if (kingSwaps.has(index)) return void send({ type: 'POWER_SWAP_DECISION', swap: true, myIndex: index });
-    const peek = peeks.get(key(selfId, index));
-    if (peek) return void send(peek);
-    if (blindMine.has(index)) pickBlind(current.mine === index ? null : index, current.theirs);
-  };
-  const theirMode =
+  /** What a tap on a slot of `owner`'s grid does now (the viewer's own included). */
+  const modeOf =
     (owner: PlayerId) =>
     (index: number): SlotMode => {
-      if (peeks.has(key(owner, index))) return 'peek';
-      if (blindTheirs.has(key(owner, index))) {
-        return current.theirs?.owner === owner && current.theirs.index === index ? 'selected' : 'pick';
-      }
+      const at = key(owner, index);
+      const own = owner === selfId;
+      if (snaps.has(at)) return isAt(current.armed, owner, index) ? 'armed' : 'snap';
+      if (own && gives.has(index)) return 'give';
+      if (own && (swapInto.has(index) || kingSwaps.has(index))) return 'swap';
+      if (peeks.has(at)) return 'peek';
+      if (own && blindMine.has(index)) return current.mine === index ? 'selected' : 'pick';
+      if (!own && blindTheirs.has(at)) return isAt(current.theirs, owner, index) ? 'selected' : 'pick';
       return 'none';
     };
-  const onTheirs = (owner: PlayerId) => (index: number) => {
-    const peek = peeks.get(key(owner, index));
+  const onSelect = (owner: PlayerId) => (index: number) => {
+    const at = key(owner, index);
+    const own = owner === selfId;
+    const snap = snaps.get(at);
+    if (snap) {
+      // Two taps on the same card: a snap is never sent by accident (UI §6).
+      if (isAt(current.armed, owner, index)) {
+        setPicks(clean);
+        void send(snap);
+      } else setPicks({ ...clean, armed: { owner, index } });
+      return;
+    }
+    if (own && gives.has(index)) return void send({ type: 'SNAP_GIVE', index });
+    if (own && swapInto.has(index)) return void send({ type: 'SWAP_DRAWN', index });
+    if (own && kingSwaps.has(index)) {
+      return void send({ type: 'POWER_SWAP_DECISION', swap: true, myIndex: index });
+    }
+    const peek = peeks.get(at);
     if (peek) return void send(peek);
-    if (blindTheirs.has(key(owner, index))) {
-      const same = current.theirs?.owner === owner && current.theirs.index === index;
-      pickBlind(current.mine, same ? null : { owner, index });
+    if (own && blindMine.has(index)) pickBlind(current.mine === index ? null : index, current.theirs);
+    if (!own && blindTheirs.has(at)) {
+      pickBlind(current.mine, isAt(current.theirs, owner, index) ? null : { owner, index });
     }
   };
 
@@ -449,7 +502,8 @@ export function GringoTableView({
     const top = Math.min(...[...geometry.seats.values()].map((p) => p.y));
     const ring = half * 1.64 + 28;
     const below = top + (theirBox.height * geometry.seatScale) / 2 + ring;
-    const lowest = arena.height - half - 48;
+    // Under the cards, only their counts: announcements live over the viewer's grid.
+    const lowest = arena.height - half - 30;
     return { x: geometry.center.x, y: Math.min(lowest, Math.max(geometry.center.y, below)) };
   }, [arena, geometry, sizes.center, stripHeight, theirBox.height]);
 
@@ -469,6 +523,16 @@ export function GringoTableView({
   const memorising = scene.phase === 'INITIAL_PEEK' && me !== undefined && !me.peekDone;
   const myRaised = memorising ? BOTTOM_ROW : NONE;
   const gringoBy = scene.gringo?.calledBy ?? null;
+  const peek = scene.peek;
+  const spotlight = peek
+    ? {
+        card: peek.card,
+        label:
+          peek.owner === selfId
+            ? `A tua ${slotLabel(peek.index)}`
+            : `A ${slotLabel(peek.index)} de ${nameOf(peek.owner)}`,
+      }
+    : null;
 
   const seatFor = (seat: (typeof opponents)[number]) => (
     <Seat
@@ -487,23 +551,27 @@ export function GringoTableView({
       stamp={stamps[seat.id] ?? null}
       final={finalOf(seat.id)}
       redKingValue={redKing}
-      modeOf={theirMode(seat.id)}
-      onSelect={onTheirs(seat.id)}
+      modeOf={modeOf(seat.id)}
+      onSelect={onSelect(seat.id)}
     />
   );
 
   const peekDone = find('POWER_PEEK_DONE');
+  const armed = current.armed;
   const coach = coachFor({
     scene,
     decisionKey,
     picks: current,
     memorising,
     timer: pendingTimer,
-    drawnPower: discardPower ? drawnPower(scene) : null,
+    drawnPower: drawnPower(scene),
+    powerUsable: discardPower !== undefined,
     canSwap: swapInto.size > 0,
-    snapArmed: current.armed !== null && snaps.has(current.armed),
+    snapArmed: armed !== null && snaps.has(key(armed.owner, armed.index)),
+    giving: gives.size > 0,
     peekShowing: peekDone !== undefined,
     kingDeciding: keep !== undefined,
+    nameOf,
   });
 
   const message = statusMessage(scene, selfId, actions, nameOf);
@@ -532,8 +600,8 @@ export function GringoTableView({
             scene={scene}
             center={center}
             size={sizes.center}
-            caption={ticker}
             onDraw={has('DRAW') ? () => void send({ type: 'DRAW' }) : null}
+            spotlight={spotlight}
           />
         )}
         {geometry &&
@@ -558,19 +626,19 @@ export function GringoTableView({
       </div>
 
       <div className="relative z-20 flex shrink-0 flex-col items-center gap-1.5 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <Prompts caption={ticker} coach={coach} />
         {me && (
           <MyGrid
             seat={me}
             size={sizes.mine}
             deal={deal}
-            modeOf={myMode}
-            onSelect={onMine}
+            modeOf={modeOf(me.id)}
+            onSelect={onSelect(me.id)}
             raised={myRaised}
             watched={watchedIn(me.id)}
             moved={movedIn(me.id)}
             stamp={stamps[me.id] ?? null}
             redKingValue={redKing}
-            coach={coach}
           />
         )}
         <ActionBar
@@ -600,10 +668,11 @@ export function GringoTableView({
               Passar
             </Button>
           )}
-          {discardPower && scene.drawn?.face && <PowerButton onClick={() => void send(discardPower)} />}
+          {discardPower && <PowerButton onClick={() => void send(discardPower)} />}
           {discardPlain && (
             <Button variant={discardPower ? 'secondary' : 'primary'} onClick={() => void send(discardPlain)}>
-              Descartar
+              {/* With a power on offer, discarding plainly says what it gives up. */}
+              {discardPower ? 'Só descartar' : 'Descartar'}
             </Button>
           )}
           {peekDone && <Button onClick={() => void send(peekDone)}>Já memorizei</Button>}
@@ -650,15 +719,20 @@ export interface CoachInput {
   picks: Picks;
   memorising: boolean;
   timer: TimerSnapshot | null;
-  /** The power of the card the viewer drew, when it can be used. */
+  /** The power of the card the viewer drew, if it has one. */
   drawnPower: PowerType | null;
+  /** That power can be used now (someone else holds cards for it). */
+  powerUsable: boolean;
   /** The drawn card can go into one of the viewer's slots. */
   canSwap: boolean;
   snapArmed: boolean;
+  /** The viewer snapped another player's card and now gives them one of theirs. */
+  giving: boolean;
   /** A 10's or a queen's card is turned for the viewer. */
   peekShowing: boolean;
   /** A king's card was seen: swap it in, or not. */
   kingDeciding: boolean;
+  nameOf: (id: PlayerId) => string;
 }
 
 /**
@@ -666,17 +740,32 @@ export interface CoachInput {
  * every power is one clear step at a time, with the time it has left.
  */
 export function coachFor(input: CoachInput): Coach | null {
-  const { scene, decisionKey, picks, timer } = input;
+  const { scene, decisionKey, picks, timer, nameOf } = input;
   const at = (step: string) => `${decisionKey}:${step}`;
   if (input.memorising) {
     return { key: 'memorise', title: 'Memoriza as tuas cartas!', tone: 'gold', drain: timer };
   }
-  if (input.snapArmed && picks.armed !== null) {
+  if (input.snapArmed && picks.armed) {
+    const { owner, index } = picks.armed;
+    const own = owner === scene.selfId;
     return {
-      key: at(`armed:${picks.armed}`),
-      title: `Toca outra vez para bater a ${slotLabel(picks.armed)}`,
+      key: at(`armed:${owner}:${index}`),
+      title: own
+        ? `Toca outra vez para bater a tua ${slotLabel(index)}`
+        : `Toca outra vez para bater a ${slotLabel(index)} de ${nameOf(owner)}`,
+      detail: own ? undefined : 'Se acertares, dás-lhe uma carta tua à escolha',
       tone: 'danger',
       drain: null,
+    };
+  }
+  if (input.giving) {
+    const owed = scene.snap?.result;
+    return {
+      key: at('give'),
+      title: owed ? `🎁 Escolhe uma carta tua para dar a ${nameOf(owed.owner)}` : '🎁 Escolhe uma carta tua',
+      detail: owed ? `Vai, virada para baixo, para o lugar ${slotLabel(owed.index)}` : undefined,
+      tone: 'gold',
+      drain: timer,
     };
   }
   if (picks.mine !== null || picks.theirs) {
@@ -717,21 +806,24 @@ export function coachFor(input: CoachInput): Coach | null {
     };
   }
   if (scene.phase === 'TURN_DECIDE' && input.canSwap) {
-    return input.drawnPower
-      ? {
-          key: at('decide-power'),
-          title: `✨ Carta com poder: ${POWER_TITLE[input.drawnPower]}`,
-          detail: '«Usar poder», «Descartar», ou toca ⇄ numa carta tua para trocar',
-          tone: 'gold',
-          drain: null,
-        }
-      : {
-          key: at('decide'),
-          title: 'Toca ⇄ numa carta tua para trocar',
-          detail: 'Ou descarta a carta tirada',
-          tone: 'plain',
-          drain: null,
-        };
+    if (input.drawnPower && input.powerUsable) {
+      return {
+        key: at('decide-power'),
+        title: `✨ Carta com poder: ${POWER_TITLE[input.drawnPower]}`,
+        detail: 'Usa-o, ou toca ⇄ numa carta tua para trocar',
+        tone: 'gold',
+        drain: null,
+      };
+    }
+    return {
+      key: at('decide'),
+      title: 'Toca ⇄ numa carta tua para trocar',
+      detail: input.drawnPower
+        ? 'Ou descarta-a: ninguém mais tem cartas, por isso o poder não se pode usar'
+        : 'Se a carta que sai tiver poder, podes usá-lo — ou descarta a tirada',
+      tone: 'plain',
+      drain: null,
+    };
   }
   return null;
 }
@@ -820,8 +912,15 @@ function statusMessage(
         if (result.hit) return who ? 'Bateste!' : `${nameOf(result.playerId)} bateu!`;
         return who ? 'Erraste — levas mais uma carta' : `${nameOf(result.playerId)} errou`;
       }
-      if (can('SNAP')) return 'Bater? Toca duas vezes numa carta tua igual à do descarte';
+      if (can('SNAP')) return 'Bater? Toca duas vezes numa carta igual à do descarte — tua ou de outro';
       return 'Alguém bate?';
+    }
+    case 'SNAP_GIVE': {
+      const owed = scene.snap?.result;
+      if (!owed) return '…';
+      if (owed.playerId === selfId) return `Escolhe uma carta tua para dar a ${nameOf(owed.owner)}`;
+      const give = owed.owner === selfId ? 'te dar' : `dar a ${nameOf(owed.owner)}`;
+      return `${nameOf(owed.playerId)} está a escolher uma carta para ${give}…`;
     }
     case 'TURN_DRAW':
       if (!mine) return `Vez de ${name}`;

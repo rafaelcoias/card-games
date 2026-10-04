@@ -1,6 +1,14 @@
 import type { PlayerId } from '@cardroom/game-core';
 import { powerOf } from './rules';
-import { canCallGringo, currentPlayerId, filledIndexes, hasCards, powerUsable, targetsOf } from './state';
+import {
+  canCallGringo,
+  currentPlayerId,
+  filledIndexes,
+  giverOf,
+  hasCards,
+  powerUsable,
+  targetsOf,
+} from './state';
 import type { GringoAction, GringoClientAction, GringoState, PowerState } from './types';
 
 /** Every slot of the other players that holds a card. */
@@ -19,11 +27,21 @@ export function getValidActions(state: GringoState, playerId: PlayerId): GringoC
   if (state.phase === 'SNAP_WINDOW') {
     const window = state.snap;
     if (!window || window.result) return [];
-    return filledIndexes(state, playerId).map((index) => ({
+    const { discardId } = window;
+    const mine = filledIndexes(state, playerId).map((index) => ({ owner: playerId, index }));
+    // Another player's card needs one of one's own to give in its place.
+    const theirs = mine.length > 0 ? otherSlots(state, playerId) : [];
+    return [...mine, ...theirs].map(({ owner, index }): GringoClientAction => ({
       type: 'SNAP',
-      discardId: window.discardId,
+      discardId,
+      owner,
       index,
     }));
+  }
+  if (state.phase === 'SNAP_GIVE') {
+    return giverOf(state) === playerId
+      ? filledIndexes(state, playerId).map((index): GringoClientAction => ({ type: 'SNAP_GIVE', index }))
+      : [];
   }
   if (currentPlayerId(state) !== playerId) return [];
   const mine = filledIndexes(state, playerId);
@@ -97,13 +115,18 @@ function powerActions(
 
 /**
  * Rules §12, per player: memorised; let the turn go or draw; discard the drawn
- * card without its power; give up the power; keep one's cards after a king's peek.
+ * card without its power; give up the power; keep one's cards after a king's
+ * peek; after snapping another's card, give them one's first card.
  */
 export function getDefaultAction(state: GringoState, playerId: PlayerId): GringoClientAction | null {
   if (state.phase === 'INITIAL_PEEK') {
     return state.seats.includes(playerId) && !state.peekDone.includes(playerId)
       ? { type: 'PEEK_DONE' }
       : null;
+  }
+  if (state.phase === 'SNAP_GIVE') {
+    const [first] = filledIndexes(state, playerId);
+    return giverOf(state) === playerId && first !== undefined ? { type: 'SNAP_GIVE', index: first } : null;
   }
   if (currentPlayerId(state) !== playerId) return null;
   switch (state.phase) {
@@ -124,19 +147,33 @@ export function getDefaultAction(state: GringoState, playerId: PlayerId): Gringo
 const peekShowing = (state: GringoState): boolean =>
   state.phase === 'POWER' && state.power?.step === 'PEEKED' && state.power.type !== 'PEEK_AND_SWAP';
 
-/** Who owes a decision: everyone still memorising, or the player on turn. */
+/** Who owes a decision: everyone still memorising, the player on turn, or a snapper owing a card. */
 export function getPendingPlayers(state: GringoState): PlayerId[] {
   if (state.phase === 'INITIAL_PEEK') return state.seats.filter((id) => !state.peekDone.includes(id));
-  const current = currentPlayerId(state);
+  const current = currentPlayerId(state) ?? giverOf(state);
   return current && !peekShowing(state) ? [current] : [];
 }
 
-/** Rules §12: 10 s to memorise, 30 s to draw and to decide, 20 s for a power. The snap window runs on its own. */
+/**
+ * Rules §12: 10 s to memorise, 30 s to draw and to decide, 20 s for a power,
+ * 10 s to choose the card given after a snap. The snap window runs on its own.
+ */
 export function getTimeoutMs(state: GringoState): number | null {
   if (getPendingPlayers(state).length === 0) return null;
   const { config } = state;
-  if (state.phase === 'INITIAL_PEEK') return config.initialPeekMs;
-  return state.phase === 'POWER' ? config.powerTimeoutMs : config.turnTimeoutMs;
+  switch (state.phase) {
+    case 'INITIAL_PEEK':
+      return config.initialPeekMs;
+    case 'POWER':
+      return config.powerTimeoutMs;
+    case 'SNAP_GIVE':
+      return config.giveTimeoutMs;
+    case 'TURN_DRAW':
+    case 'TURN_DECIDE':
+    case 'SNAP_WINDOW':
+    case 'FINISHED':
+      return config.turnTimeoutMs;
+  }
 }
 
 /** The initial peek ends for everyone at once; a turn's clock plays the whole default (draw and discard). */

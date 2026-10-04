@@ -4,7 +4,7 @@ import { scheduleFor } from './engine';
 import { gringo } from './module';
 import { CARDS_PER_DECK, points } from './rules';
 import { config } from './test-utils';
-import type { GringoAction, GringoClientAction, GringoEvent, GringoState } from './types';
+import type { GringoAction, GringoEvent, GringoState } from './types';
 
 const GAMES = Number(process.env.GRINGO_SIMULATIONS ?? 10_000);
 const MAX_ACTIONS = 5_000;
@@ -39,18 +39,19 @@ function decide(state: GringoState, playerId: PlayerId, temper: Temper, rng: Rng
   return pickOne(actions, rng);
 }
 
-/** Who snaps the open discard, and which slot: a remembered match, or a blind guess. */
-function snapper(state: GringoState, temper: Temper, rng: Rng): [PlayerId, GringoClientAction] | null {
+/** Who snaps the open discard, and which card: a remembered match of one's own, or a guess at anyone's. */
+function snapper(state: GringoState, temper: Temper, rng: Rng): [PlayerId, GringoAction] | null {
   const window = state.snap;
-  if (!window || window.result || rng.nextInt(1000) >= temper.snap * 1000) return null;
+  if (state.phase !== 'SNAP_WINDOW' || !window || window.result) return null;
+  if (rng.nextInt(1000) >= temper.snap * 1000) return null;
   const top = state.discard.at(-1)!;
   const candidates = state.seats.filter((id) => gringo.getValidActions(state, id).length > 0);
   if (candidates.length === 0) return null;
   const playerId = pickOne(candidates, rng);
   const filled = state.grids[playerId]!.filter((s) => s.card);
   const match = temper.memory ? filled.find((s) => s.card!.rank === top.rank) : undefined;
-  const slot = match ?? pickOne(filled, rng);
-  return [playerId, { type: 'SNAP', discardId: window.discardId, index: slot.index }];
+  if (match) return [playerId, { type: 'SNAP', discardId: window.discardId, index: match.index }];
+  return [playerId, pickOne(gringo.getValidActions(state, playerId), rng)];
 }
 
 interface Audit {
@@ -91,6 +92,15 @@ function assertInvariants(
   }
   if ((state.phase === 'TURN_DECIDE') !== (state.drawn !== null))
     throw new Error(`${game}: drawn card out of step`);
+  if (state.phase === 'SNAP_GIVE') {
+    // A hit on another player's card: their slot waits empty, and the snapper has a card to give.
+    const owed = state.snap?.result;
+    if (!owed?.hit || owed.owner === owed.playerId || owed.given !== null)
+      throw new Error(`${game}: a card owed without a hit on another's`);
+    if (state.grids[owed.owner]!.find((s) => s.index === owed.index)?.card)
+      throw new Error(`${game}: the gap was filled before the card was given`);
+    if (!state.grids[owed.playerId]!.some((s) => s.card)) throw new Error(`${game}: nothing to give`);
+  }
   if (state.phase === 'TURN_DRAW') {
     const current = state.seats[state.currentIndex]!;
     const holds = state.grids[current]!.some((s) => s.card);

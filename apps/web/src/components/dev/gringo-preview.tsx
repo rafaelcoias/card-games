@@ -27,7 +27,14 @@ import { Logo } from '@/components/ui/logo';
 import type { Bubble } from '@/games/desconfia/seat';
 import { sceneFromView, type Scene } from '@/games/gringo/scene';
 import type { Stamp } from '@/games/gringo/seat';
-import { GringoTableView, peekCaption, swapCaption, useGringoSizes } from '@/games/gringo/table';
+import {
+  GringoTableView,
+  giveCaption,
+  peekCaption,
+  snapCaption,
+  swapCaption,
+  useGringoSizes,
+} from '@/games/gringo/table';
 
 const NAMES = ['tu', 'ana', 'bruno', 'carla', 'duarte', 'eva', 'filipa', 'gil', 'helena', 'ivo'];
 const ME = 'tu';
@@ -121,12 +128,41 @@ const powerOn = (t: Driver) => {
 const firstFilled = (state: GringoState, owner: string) =>
   state.grids[owner]?.find((s) => s.card)?.index ?? 0;
 
+/** Trades `owner`'s card at `index` for one of `rank` from the deck, so a snap on it is sure to hit. */
+function plant(t: Driver, owner: string, index: number, rank: string): void {
+  const grid = t.state.grids[owner] ?? [];
+  const slot = grid.find((s) => s.index === index);
+  const at = t.state.deck.findIndex((c) => c.rank === rank);
+  if (!slot?.card || at < 0) return;
+  const deck = [...t.state.deck];
+  const [planted] = deck.splice(at, 1, slot.card);
+  t.state = {
+    ...t.state,
+    deck,
+    grids: {
+      ...t.state.grids,
+      [owner]: grid.map((s) => (s.index === index ? { ...s, card: planted ?? null } : s)),
+    },
+  };
+}
+
 const SCENARIOS: Scenario[] = [
   { label: 'Espreitar inicial', players: 4 },
   { label: 'A tua vez', players: 4, config: { gringoEnabled: true, gringoMinTurns: 3 }, play: started },
   { label: 'Carta tirada', players: 4, deckTop: ['3H'], play: drawFor },
   { label: 'Carta com poder', players: 4, deckTop: ['10S'], play: drawFor },
   { label: 'Espreitar outro', players: 4, deckTop: ['10S'], play: powerOn },
+  {
+    label: 'Troca com poder',
+    players: 4,
+    deckTop: ['3H'],
+    play: (t) => {
+      drawFor(t);
+      // The viewer's [2] is a jack: swapped out, its power is theirs to use.
+      plant(t, ME, 1, 'J');
+      t.act({ type: 'SWAP_DRAWN', index: 1 }, ME);
+    },
+  },
   {
     label: 'A espreitar',
     players: 4,
@@ -213,6 +249,34 @@ const SCENARIOS: Scenario[] = [
           }
         : {};
     },
+  },
+  {
+    label: 'Dar carta',
+    players: 4,
+    deckTop: ['7H'],
+    play: (t) => {
+      drawFor(t);
+      t.act({ type: 'DISCARD_DRAWN', usePower: false }, ME);
+      plant(t, 'ana', 1, '7');
+      t.act({ type: 'SNAP', discardId: t.state.snap?.discardId ?? 0, owner: 'ana', index: 1 }, ME);
+    },
+    dress: () => ({
+      stamps: { ana: { key: 1, hit: true, index: 1 } },
+      ticker: snapCaption(ME, 'ana', 1, ME, names),
+    }),
+  },
+  {
+    label: 'Bateram-te',
+    players: 4,
+    deckTop: ['7H'],
+    play: (t) => {
+      drawFor(t);
+      t.act({ type: 'DISCARD_DRAWN', usePower: false }, ME);
+      plant(t, ME, 2, '7');
+      t.act({ type: 'SNAP', discardId: t.state.snap?.discardId ?? 0, owner: ME, index: 2 }, 'carla');
+      t.act({ type: 'SNAP_GIVE', index: 0 }, 'carla');
+    },
+    dress: () => ({ ticker: giveCaption('carla', 0, ME, 2, ME, names) }),
   },
   {
     label: 'Troca às cegas',

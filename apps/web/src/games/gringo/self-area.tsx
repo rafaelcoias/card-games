@@ -40,7 +40,6 @@ export interface MyGridProps {
   moved: ReadonlySet<number>;
   stamp: Stamp | null;
   redKingValue: -3 | -1 | null;
-  coach: Coach | null;
 }
 
 const COACH_TONE: Record<Coach['tone'], { pill: string; bar: string }> = {
@@ -48,6 +47,64 @@ const COACH_TONE: Record<Coach['tone'], { pill: string; bar: string }> = {
   plain: { pill: 'bg-black/70 text-ivory ring-1 ring-white/10', bar: 'bg-white/10' },
   danger: { pill: 'bg-danger text-white', bar: 'bg-black/15' },
 };
+
+/**
+ * Over the viewer's cards, one message at a time: what to do now or, when
+ * there is nothing to do, what just happened at the table ("Ana bateu a tua
+ * [2]!" — while the viewer acts, it is mostly about that same move). It sits
+ * in a lane of fixed height, so the table never shifts when it comes and goes,
+ * anchored by its bottom just over the cards: a longer text grows upwards,
+ * never over them.
+ */
+export function Prompts({ caption, coach }: { caption: string | null; coach: Coach | null }) {
+  const tone = coach ? COACH_TONE[coach.tone] : null;
+  return (
+    <div className="relative h-14 w-full shrink-0">
+      {/* Every announcement still reaches assistive tech. */}
+      <p className="sr-only" aria-live="polite">
+        {caption}
+      </p>
+      <div className="pointer-events-none absolute bottom-1.5 left-1/2 z-[75] flex w-max max-w-[min(calc(100vw-1.5rem),34rem)] -translate-x-1/2 justify-center">
+        <AnimatePresence mode="popLayout">
+          {coach && tone ? (
+            <motion.div
+              key={`coach:${coach.key}`}
+              role="status"
+              className={clsx(
+                'relative overflow-hidden rounded-2xl px-4 py-1.5 text-center text-balance shadow-lg sm:py-2',
+                tone.pill,
+              )}
+              initial={{ opacity: 0, y: 6, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+            >
+              {coach.drain && <DrainBar drain={coach.drain} className={tone.bar} />}
+              <p className="relative text-[15px] font-bold leading-snug sm:text-base">{coach.title}</p>
+              {coach.detail && (
+                <p className="relative mt-0.5 text-[13px] font-medium leading-snug opacity-85 sm:text-sm">
+                  {coach.detail}
+                </p>
+              )}
+            </motion.div>
+          ) : caption ? (
+            <motion.p
+              key={`caption:${caption}`}
+              aria-hidden="true"
+              className="rounded-2xl bg-black/65 px-3.5 py-1.5 text-center text-sm font-semibold text-balance text-ivory shadow-lg backdrop-blur-sm sm:text-[15px]"
+              initial={{ opacity: 0, y: 6, scale: 0.92 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.18 }}
+            >
+              {caption}
+            </motion.p>
+          ) : null}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+}
 
 /** The viewer's own grid, big, at the bottom of the table. */
 export function MyGrid({
@@ -61,36 +118,9 @@ export function MyGrid({
   moved,
   stamp,
   redKingValue,
-  coach,
 }: MyGridProps) {
-  const tone = coach ? COACH_TONE[coach.tone] : null;
   return (
-    <div className={clsx('relative flex flex-col items-center', coach?.detail ? 'pt-12' : 'pt-7')}>
-      <AnimatePresence mode="popLayout">
-        {coach && tone && (
-          <motion.div
-            key={coach.key}
-            className="pointer-events-none absolute top-0 z-[75] flex max-w-[min(92vw,30rem)] flex-col items-center"
-            initial={{ opacity: 0, y: 6, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-          >
-            <div
-              className={clsx(
-                'relative overflow-hidden rounded-2xl px-3.5 py-1 text-center shadow-lg',
-                tone.pill,
-              )}
-            >
-              {coach.drain && <DrainBar drain={coach.drain} className={tone.bar} />}
-              <p className="relative text-[13px] font-bold leading-5">{coach.title}</p>
-              {coach.detail && (
-                <p className="relative text-[11px] font-medium leading-4 opacity-80">{coach.detail}</p>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="relative">
       <Grid
         seat={seat}
         size={size}
@@ -104,6 +134,7 @@ export function MyGrid({
         moved={moved}
         redKingValue={redKingValue}
         flash={stamp}
+        armedLabel={false}
       />
       <StampMark stamp={stamp} />
     </div>
@@ -178,7 +209,10 @@ export function ActionBar({
         </div>
         <div className="min-w-0 flex-1">
           <p
-            className={clsx('truncate text-sm font-semibold', highlight ? 'text-gold' : 'text-ivory')}
+            className={clsx(
+              'line-clamp-2 text-sm font-semibold leading-snug',
+              highlight ? 'text-gold' : 'text-ivory',
+            )}
             role="status"
           >
             {message}
@@ -200,7 +234,12 @@ export function ActionBar({
           </p>
         </div>
       </div>
-      {children && <div className="flex gap-2 max-sm:w-full *:max-sm:flex-1">{children}</div>}
+      {children && (
+        // On narrow phones the buttons share the row by their length, and wrap rather than break a label.
+        <div className="flex flex-wrap gap-2 max-sm:w-full *:max-sm:flex-auto [&_button]:whitespace-nowrap max-sm:[&_button]:px-3">
+          {children}
+        </div>
+      )}
     </div>
   );
 }

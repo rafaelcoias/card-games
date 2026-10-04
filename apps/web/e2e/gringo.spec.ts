@@ -30,11 +30,17 @@ async function takeTurn(page: Page, turn: number): Promise<boolean> {
     return true;
   }
   const status = (await page.getByRole('status').filter({ hasText: /./ }).allTextContents()).join(' ');
+  // Snapped someone else's card: one of one's own goes to them.
+  if (/Escolhe uma carta tua para dar/.test(status)) {
+    return tapRandom(page, /^A tua carta \[\d+\]$/);
+  }
   if (/Bater\? Toca duas vezes/.test(status) && Math.random() < 0.15) {
-    const mine = page.getByRole('button', { name: /^A tua carta \[\d+\]$/ });
-    const count = await mine.count();
+    // Mostly one's own card; now and then another player's.
+    const whose = Math.random() < 0.3 ? /^Carta \[\d+\] de / : /^A tua carta \[\d+\]$/;
+    const cards = page.getByRole('button', { name: whose });
+    const count = await cards.count();
     if (count > 0) {
-      const card = mine.nth(Math.floor(Math.random() * count));
+      const card = cards.nth(Math.floor(Math.random() * count));
       await card.dispatchEvent('click');
       await card.dispatchEvent('click');
       return true;
@@ -52,11 +58,13 @@ async function takeTurn(page: Page, turn: number): Promise<boolean> {
       return true;
     }
   }
-  if (await visible(page, 'Descartar')) {
+  // With a power on offer, the plain discard reads "Só descartar".
+  const discard = /^(Só descartar|Descartar)$/;
+  if (await visible(page, discard)) {
     const power = page.getByRole('button', { name: /Usar poder$/ });
     if ((await power.isVisible().catch(() => false)) && Math.random() < 0.8) await power.click();
     else if (Math.random() < 0.35) await tapRandom(page, /^A tua carta \[\d+\]$/);
-    else await page.getByRole('button', { name: 'Descartar', exact: true }).click();
+    else await page.getByRole('button', { name: discard }).click();
     return true;
   }
   if (await visible(page, 'Não usar')) {

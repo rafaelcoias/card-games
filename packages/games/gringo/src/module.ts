@@ -26,6 +26,7 @@ export const gringoConfigSchema = z.object({
   initialPeekMs: z.number().int().min(3_000).max(30_000).default(10_000),
   turnTimeoutMs: z.number().int().min(10_000).max(120_000).default(30_000),
   powerTimeoutMs: z.number().int().min(5_000).max(60_000).default(20_000),
+  giveTimeoutMs: z.number().int().min(5_000).max(30_000).default(10_000),
 }) satisfies z.ZodType<GringoConfig>;
 
 const yesNo = [
@@ -101,7 +102,13 @@ export const gringoActionSchema = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('POWER_BLIND_SWAP'), myIndex: index, owner: playerId, theirIndex: index }),
   z.strictObject({ type: z.literal('POWER_SWAP_DECISION'), swap: z.boolean(), myIndex: index.optional() }),
   z.strictObject({ type: z.literal('POWER_SKIP') }),
-  z.strictObject({ type: z.literal('SNAP'), discardId: z.number().int().min(1), index }),
+  z.strictObject({
+    type: z.literal('SNAP'),
+    discardId: z.number().int().min(1),
+    index,
+    owner: playerId.optional(),
+  }),
+  z.strictObject({ type: z.literal('SNAP_GIVE'), index }),
 ]);
 
 export type GringoModule = GameModule<GringoState, GringoAction, GringoConfig, GringoView, GringoEvent>;

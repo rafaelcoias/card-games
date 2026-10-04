@@ -140,7 +140,55 @@ describe('a turn (07 §2)', () => {
     ]);
   });
 
-  it('discards with or without the power, and only a drawn and discarded card has one', () => {
+  it("a card swapped out of one's grid brings its power, which may be used or let go", () => {
+    // Ana swaps the 5♥ into [2]: her K♥ goes out, and with it the king's power.
+    const t = table(['5H', '6C']);
+    t.draw('ana');
+    const swap = t.swap('ana', 1);
+    expect(swap.events).toEqual([
+      { type: 'Swapped', playerId: 'ana', index: 1, discarded: card('KH'), power: 'PEEK_AND_SWAP' },
+    ]);
+    expect(t.state.phase).toBe('POWER');
+    expect(t.module.getValidActions(t.state, 'ana')).toContainEqual({
+      type: 'POWER_PEEK',
+      owner: 'bruno',
+      index: 0,
+    });
+    expect(t.module.getTimeoutMs(t.state)).toBe(20_000);
+    t.apply({ type: 'POWER_PEEK', owner: 'bruno', index: 0 }, 'ana');
+    expect(t.module.getPlayerView(t.state, 'ana').peek?.card.id).toBe('4H');
+    t.apply({ type: 'POWER_SWAP_DECISION', swap: false }, 'ana');
+    expect(t.state.phase).toBe('SNAP_WINDOW');
+    t.closeWindow();
+
+    // Bruno swaps out his J♣ and lets its power go; the window opens on it.
+    t.draw('bruno');
+    t.swap('bruno', 1);
+    expect(t.state.power).toMatchObject({ type: 'BLIND_SWAP', step: 'CHOOSE' });
+    const skip = t.apply({ type: 'POWER_SKIP' }, 'bruno');
+    expect(eventTypes(skip.events)).toEqual(['PowerSkipped', 'SnapWindowOpened']);
+    expect(t.state.discard.at(-1)?.id).toBe('JC');
+  });
+
+  it('a power swapped out is given up when the clock runs out, and is not offered without a target', () => {
+    const late = table(['5H']);
+    late.draw('ana');
+    late.swap('ana', 1);
+    expect(late.module.getDefaultAction(late.state, 'ana')).toEqual({ type: 'POWER_SKIP' });
+    expect(eventTypes(late.system({ type: 'SYS_TIMEOUT' }).events)).toEqual([
+      'PowerSkipped',
+      'SnapWindowOpened',
+    ]);
+
+    // Bruno has no cards left: Ana's K♥ swapped out has nobody to look at.
+    const t = emptyBruno({ ana: ['9C', 'KH', '2D', '7D'] }, ['5S', '9H']);
+    t.draw('ana');
+    const swap = t.swap('ana', 1);
+    expect(swap.events[0]).toMatchObject({ type: 'Swapped', power: null });
+    expect(t.state.phase).toBe('SNAP_WINDOW');
+  });
+
+  it('discards with or without the power; a plain card swapped out has none', () => {
     const t = table(['QH', 'QD']);
     t.draw('ana');
     expect(t.module.getValidActions(t.state, 'ana')).toEqual([
@@ -155,7 +203,7 @@ describe('a turn (07 §2)', () => {
     expect(plain.events[0]).toMatchObject({ type: 'DiscardedDrawn', power: null });
     expect(t.state.phase).toBe('SNAP_WINDOW');
     t.closeWindow();
-    // Bruno swaps the queen of diamonds in, then swaps it out next time: no power from a grid.
+    // Bruno swaps the queen of diamonds in: the 4♥ that goes out has no power.
     t.draw('bruno');
     t.swap('bruno', 0);
     expect(t.state.power).toBeNull();
@@ -381,6 +429,7 @@ describe('snapping (07 §4)', () => {
         type: 'SnapSucceeded',
         discardId: 1,
         playerId: 'carla',
+        owner: 'carla',
         index: 0,
         card: card('6D'),
       },
@@ -482,6 +531,150 @@ describe('snapping (07 §4)', () => {
     const close = t.closeWindow();
     expect(eventTypes(close.events)).toEqual(['SnapWindowClosed', 'TurnStarted']);
     expect(t.current).toBe('bruno');
+  });
+});
+
+describe("snapping another player's card", () => {
+  /** Ana discards the drawn card: the window is open on it. */
+  const open = (top: string, deck: string[] = []) => {
+    const t = table([top, ...deck], {}, { fill: false });
+    t.draw('ana');
+    t.discard('ana');
+    return t;
+  };
+  const snapOf = (t: Table, playerId: string, owner: string, index: number) =>
+    t.apply({ type: 'SNAP', discardId: t.state.snap?.discardId ?? -1, owner, index }, playerId);
+
+  it('a hit throws their card away; the snapper chooses one of theirs to fill the gap, and has a card fewer', () => {
+    const t = open('6H', ['5C']);
+    const hit = snapOf(t, 'bruno', 'carla', 0);
+    expect(hit.events).toEqual([
+      { type: 'SnapSucceeded', discardId: 1, playerId: 'bruno', owner: 'carla', index: 0, card: card('6D') },
+    ]);
+    expect(t.grid('carla')).toEqual([null, 'JK1', 'QS', '3C']);
+    expect(t.state.discard.map((c) => c.id)).toEqual(['6H', '6D']);
+    // Bruno owes Carla a card: he is on the clock, and nothing else happens meanwhile.
+    expect(t.state.phase).toBe('SNAP_GIVE');
+    expect(hit.schedule).toBeUndefined();
+    expect(t.module.getPendingPlayers(t.state)).toEqual(['bruno']);
+    expect(t.module.getTimeoutMs(t.state)).toBe(10_000);
+    expect(t.module.getValidActions(t.state, 'bruno')).toEqual(
+      [0, 1, 2, 3].map((index) => ({ type: 'SNAP_GIVE', index })),
+    );
+    expect(t.module.getValidActions(t.state, 'carla')).toEqual([]);
+
+    const gave = t.apply({ type: 'SNAP_GIVE', index: 3 }, 'bruno');
+    expect(gave.events).toEqual([
+      { type: 'CardGiven', discardId: 1, playerId: 'bruno', index: 3, owner: 'carla', ownerIndex: 0 },
+    ]);
+    // The 10♦ takes the exact slot of the 6♦; Bruno's slot stays empty.
+    expect(t.grid('carla')).toEqual(['10D', 'JK1', 'QS', '3C']);
+    expect(t.grid('bruno')).toEqual(['4H', 'JC', 'AS', null]);
+    expect(gave.schedule).toEqual([
+      { action: { type: 'SYS_SNAP_WINDOW_CLOSED', discardId: 1 }, delayMs: PACE.give },
+    ]);
+    // Face down for everyone, Carla included.
+    for (const viewer of ['ana', 'bruno', 'carla']) {
+      const view = t.module.getPlayerView(t.state, viewer);
+      expect(view.seats[2]?.grid[0]).toEqual({ index: 0, empty: false, card: null });
+      expect(view.snap?.result).toMatchObject({ playerId: 'bruno', owner: 'carla', hit: true, given: 3 });
+    }
+    expect(eventTypes(t.closeWindow().events)).toEqual(['SnapWindowClosed', 'TurnStarted']);
+    expect(t.current).toBe('bruno');
+  });
+
+  it('giving away the last card leaves the snapper out of cards', () => {
+    const t = open('6H', ['5C']);
+    // Bruno is down to his 4♥.
+    t.state = {
+      ...t.state,
+      grids: {
+        ...t.state.grids,
+        bruno: t.state.grids.bruno!.map((s) => (s.index === 0 ? s : { ...s, card: null })),
+      },
+    };
+    snapOf(t, 'bruno', 'carla', 0);
+    const gave = t.apply({ type: 'SNAP_GIVE', index: 0 }, 'bruno');
+    expect(eventTypes(gave.events)).toEqual(['CardGiven', 'PlayerOut']);
+    expect(t.grid('carla')).toEqual(['4H', 'JK1', 'QS', '3C']);
+    expect(t.module.getPlayerView(t.state, 'ana').seats[1]?.cardCount).toBe(0);
+  });
+
+  it("a miss shows their card to everyone and puts it back; the penalty card is the snapper's", () => {
+    const t = open('8H', ['5C', '2H']);
+    const miss = snapOf(t, 'bruno', 'carla', 1);
+    expect(miss.events).toEqual([
+      {
+        type: 'SnapFailed',
+        discardId: 1,
+        playerId: 'bruno',
+        owner: 'carla',
+        index: 1,
+        card: card('JK1'),
+        penaltyIndex: 4,
+      },
+    ]);
+    expect(t.state.phase).toBe('SNAP_WINDOW');
+    expect(t.grid('carla')).toEqual(['6D', 'JK1', 'QS', '3C']);
+    expect(t.grid('bruno')).toEqual(['4H', 'JC', 'AS', '10D', '5C']);
+    for (const viewer of ['ana', 'bruno', 'carla']) {
+      const view = t.module.getPlayerView(t.state, viewer);
+      expect(view.seats[2]?.grid[1]?.card?.id).toBe('JK1');
+      expect(view.seats[1]?.grid[1]?.card).toBeNull();
+    }
+    expect(miss.schedule?.[0]?.delayMs).toBe(PACE.snapMiss);
+    t.closeWindow();
+    expect(t.module.getPlayerView(t.state, 'ana').seats[2]?.grid[1]?.card).toBeNull();
+  });
+
+  it('offers every card of the others who hold some, to whoever has a card to give', () => {
+    const t = open('6H', ['5C']);
+    const snaps = t.module.getValidActions(t.state, 'bruno');
+    expect(snaps).toHaveLength(12);
+    expect(snaps).toContainEqual({ type: 'SNAP', discardId: 1, owner: 'bruno', index: 0 });
+    expect(snaps).toContainEqual({ type: 'SNAP', discardId: 1, owner: 'ana', index: 3 });
+    expect(snaps).toContainEqual({ type: 'SNAP', discardId: 1, owner: 'carla', index: 2 });
+    expectError(t.try({ type: 'SNAP', discardId: 1, owner: 'zé', index: 0 }, 'bruno'), 'UNKNOWN_TARGET');
+    expectError(t.try({ type: 'SNAP_GIVE', index: 0 }, 'bruno'), 'WRONG_PHASE');
+  });
+
+  it('a player without cards cannot snap anybody', () => {
+    const t = emptyBruno({ ana: ['9C', 'KH', '2D', '7D'] }, ['9H', '3S']);
+    t.draw(t.current as string);
+    t.discard(t.current as string);
+    expect(t.module.getValidActions(t.state, 'bruno')).toEqual([]);
+    expectError(
+      t.try({ type: 'SNAP', discardId: t.state.snap!.discardId, owner: 'ana', index: 0 }, 'bruno'),
+      'NO_CARD_TO_GIVE',
+    );
+  });
+
+  it('while the card is owed, the window stays shut and only the snapper may give it', () => {
+    const t = open('6H', ['5C']);
+    snapOf(t, 'bruno', 'carla', 0);
+    expectError(t.try({ type: 'SNAP', discardId: 1, index: 0 }, 'ana'), 'SNAP_CLOSED');
+    expectError(t.try({ type: 'SNAP_GIVE', index: 0 }, 'carla'), 'NOT_YOUR_TURN');
+    expectError(t.try({ type: 'SYS_SNAP_WINDOW_CLOSED', discardId: 1 }, SYSTEM_PLAYER_ID), 'STALE_WINDOW');
+    expectError(t.try({ type: 'DRAW' }, 'bruno'), 'NOT_YOUR_TURN');
+    t.state = {
+      ...t.state,
+      grids: {
+        ...t.state.grids,
+        bruno: t.state.grids.bruno!.map((s) => (s.index === 2 ? { ...s, card: null } : s)),
+      },
+    };
+    expectError(t.try({ type: 'SNAP_GIVE', index: 2 }, 'bruno'), 'EMPTY_SLOT');
+  });
+
+  it("when the snapper's time runs out, their first card goes", () => {
+    const t = open('6H', ['5C']);
+    snapOf(t, 'bruno', 'carla', 0);
+    expect(t.module.getDefaultAction(t.state, 'bruno')).toEqual({ type: 'SNAP_GIVE', index: 0 });
+    expect(t.module.getDefaultAction(t.state, 'carla')).toBeNull();
+    expect(t.module.getTimeoutAction?.(t.state)).toEqual({ type: 'SYS_TIMEOUT' });
+    const late = t.system({ type: 'SYS_TIMEOUT' });
+    expect(late.events[0]).toMatchObject({ type: 'CardGiven', index: 0, owner: 'carla', ownerIndex: 0 });
+    expect(t.grid('carla')).toEqual(['4H', 'JK1', 'QS', '3C']);
   });
 });
 
@@ -702,10 +895,15 @@ describe('schemas', () => {
       initialPeekMs: 10_000,
       turnTimeoutMs: 30_000,
       powerTimeoutMs: 20_000,
+      giveTimeoutMs: 10_000,
     });
     expect(gringoConfigSchema.safeParse({ redKingValue: -2 }).success).toBe(false);
     expect(gringoConfigSchema.safeParse({ snapWindowMs: 10_000 }).success).toBe(false);
     expect(gringoActionSchema.safeParse({ type: 'SNAP', discardId: 3, index: 1 }).success).toBe(true);
+    expect(gringoActionSchema.safeParse({ type: 'SNAP', discardId: 3, index: 1, owner: 'ana' }).success).toBe(
+      true,
+    );
+    expect(gringoActionSchema.safeParse({ type: 'SNAP_GIVE', index: 2 }).success).toBe(true);
     expect(gringoActionSchema.safeParse({ type: 'SYS_TIMEOUT' }).success).toBe(false);
     expect(gringoActionSchema.safeParse({ type: 'DRAW', extra: 1 }).success).toBe(false);
   });

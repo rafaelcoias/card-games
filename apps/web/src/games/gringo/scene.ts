@@ -92,8 +92,17 @@ export type Fx =
     }
   | { kind: 'kept'; playerId: PlayerId; owner: PlayerId; theirIndex: number }
   | { kind: 'snapOpen'; discardId: number; ms: number }
-  | { kind: 'snapHit'; playerId: PlayerId; index: number; card: CardInstance }
-  | { kind: 'snapMiss'; playerId: PlayerId; index: number; card: CardInstance; penalty: boolean }
+  /** `owner`: whose card was snapped (the snapper's own, or another player's). */
+  | { kind: 'snapHit'; playerId: PlayerId; owner: PlayerId; index: number; card: CardInstance }
+  | {
+      kind: 'snapMiss';
+      playerId: PlayerId;
+      owner: PlayerId;
+      index: number;
+      card: CardInstance;
+      penalty: boolean;
+    }
+  | { kind: 'gave'; playerId: PlayerId; index: number; owner: PlayerId; ownerIndex: number }
   | { kind: 'out'; playerId: PlayerId }
   | { kind: 'passed'; playerId: PlayerId }
   | {
@@ -324,7 +333,7 @@ export function applyEvent(scene: Scene, event: GringoEvent): Step<Scene, Fx> | 
       );
 
     case 'Swapped': {
-      const { playerId, index, discarded } = event;
+      const { playerId, index, discarded, power } = event;
       const old = slotOf(scene, playerId, index);
       const drawn = scene.drawn;
       if (!old?.token || !drawn) return step(scene, 0);
@@ -335,15 +344,19 @@ export function applyEvent(scene: Scene, event: GringoEvent): Step<Scene, Fx> | 
         face: null,
         enter: undefined,
       }));
+      const swapped: Scene = {
+        ...next,
+        drawn: null,
+        discard: toDiscard(scene, old.token, discarded),
+        moved: [{ owner: playerId, index }],
+      };
+      const fx: Fx[] = [{ kind: 'discarded', playerId, card: discarded, swappedIndex: index }];
+      if (!power) return step(swapped, SLOT_GLIDE_SECONDS * 1000, fx);
+      // The card that went out has a power: it is used (or let go) before the snap window.
       return step(
-        {
-          ...next,
-          drawn: null,
-          discard: toDiscard(scene, old.token, discarded),
-          moved: [{ owner: playerId, index }],
-        },
+        { ...swapped, phase: 'POWER', power: { playerId, type: power, step: 'CHOOSE', target: null } },
         SLOT_GLIDE_SECONDS * 1000,
-        [{ kind: 'discarded', playerId, card: discarded, swappedIndex: index }],
+        [...fx, { kind: 'power', playerId, power }],
       );
     }
 
@@ -437,39 +450,70 @@ export function applyEvent(scene: Scene, event: GringoEvent): Step<Scene, Fx> | 
       );
 
     case 'SnapSucceeded': {
-      const { playerId, index, card, discardId } = event;
-      const slot = slotOf(scene, playerId, index);
+      const { playerId, owner, index, card, discardId } = event;
+      const slot = slotOf(scene, owner, index);
       if (!slot?.token) return step(scene, 0);
       const emptied = withSeat(
-        withSlot(scene, playerId, index, (s) => ({ ...s, token: null, face: null, enter: undefined })),
-        playerId,
+        withSlot(scene, owner, index, (s) => ({ ...s, token: null, face: null, enter: undefined })),
+        owner,
         (seat) => ({ ...seat, cardCount: Math.max(0, seat.cardCount - 1) }),
       );
       return step(
         {
           ...emptied,
+          // Another player's card: the snapper now owes them one of theirs.
+          phase: owner === playerId ? scene.phase : 'SNAP_GIVE',
           discard: toDiscard(scene, slot.token, card),
           snap: {
             discardId,
             open: false,
-            result: { playerId, index, card, hit: true, penaltyIndex: null },
+            result: { playerId, owner, index, card, hit: true, penaltyIndex: null, given: null },
           },
         },
         750,
-        [{ kind: 'snapHit', playerId, index, card }],
+        [{ kind: 'snapHit', playerId, owner, index, card }],
+      );
+    }
+
+    case 'CardGiven': {
+      const { playerId, index, owner, ownerIndex } = event;
+      const given = slotOf(scene, playerId, index);
+      if (!given?.token) return step(scene, 0);
+      // The card glides, face down, from the snapper's slot into the gap.
+      const moved = withSlot(
+        withSlot(scene, playerId, index, (s) => ({ ...s, token: null, face: null, enter: undefined })),
+        owner,
+        ownerIndex,
+        (s) => ({ ...s, token: given.token, face: null, enter: undefined }),
+      );
+      const counted = withSeat(
+        withSeat(moved, playerId, (seat) => ({ ...seat, cardCount: Math.max(0, seat.cardCount - 1) })),
+        owner,
+        (seat) => ({ ...seat, cardCount: seat.cardCount + 1 }),
+      );
+      const result = scene.snap?.result;
+      return step(
+        {
+          ...counted,
+          phase: 'SNAP_WINDOW',
+          snap: scene.snap && result ? { ...scene.snap, result: { ...result, given: index } } : scene.snap,
+          moved: [{ owner, index: ownerIndex }],
+        },
+        SLOT_GLIDE_SECONDS * 1000 + 200,
+        [{ kind: 'gave', playerId, index, owner, ownerIndex }],
       );
     }
 
     case 'SnapFailed': {
-      const { playerId, index, card, penaltyIndex, discardId } = event;
+      const { playerId, owner, index, card, penaltyIndex, discardId } = event;
       // Shown to everyone for 1.5 s (UI §6)…
-      const shown = withSlot(scene, playerId, index, (slot) => ({ ...slot, face: card }));
-      const result = { playerId, index, card, hit: false, penaltyIndex };
+      const shown = withSlot(scene, owner, index, (slot) => ({ ...slot, face: card }));
+      const result = { playerId, owner, index, card, hit: false, penaltyIndex, given: null };
       const reveal = step({ ...shown, snap: { discardId, open: false, result } }, 1500, [
-        { kind: 'snapMiss', playerId, index, card, penalty: penaltyIndex !== null },
+        { kind: 'snapMiss', playerId, owner, index, card, penalty: penaltyIndex !== null },
       ]);
-      // …then back down, and a penalty card comes in, face down, in a new slot.
-      let back = withSlot(reveal.scene, playerId, index, (slot) => ({ ...slot, face: null }));
+      // …then back down, and a penalty card comes in, face down, in a new slot of the snapper's grid.
+      let back = withSlot(reveal.scene, owner, index, (slot) => ({ ...slot, face: null }));
       if (penaltyIndex !== null) {
         back = withSeat(back, playerId, (seat) => ({
           ...seat,

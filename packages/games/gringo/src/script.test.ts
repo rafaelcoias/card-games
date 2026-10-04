@@ -34,6 +34,15 @@ function dealt(cfg: Partial<GringoConfig> = {}): Table {
   return t;
 }
 
+/**
+ * A swap as the script plays it. The script was written before a card swapped
+ * out of a grid kept its power: when it has one, the player lets it go.
+ */
+function swapOut(t: Table, player: string, index: number): void {
+  t.swap(player, index);
+  if (t.state.phase === 'POWER') t.apply({ type: 'POWER_SKIP' }, player);
+}
+
 /** Turns 1–3 of the script. */
 function firstRound(t: Table): void {
   // Turn 1 — Ana draws the 10♠, discards it and looks at Bruno's [2]: the J♣, for her alone.
@@ -61,11 +70,17 @@ function firstRound(t: Table): void {
   t.tick();
   expect(t.current).toBe('bruno');
 
-  // Turn 2 — Bruno draws the 5♥ and swaps it into [2]: the J♣ goes out, with no power.
+  // Turn 2 — Bruno draws the 5♥ and swaps it into [2]: the J♣ goes out, and he lets its power go.
   t.draw('bruno');
   const swap = t.swap('bruno', 1);
-  expect(swap.events).toContainEqual(expect.objectContaining({ type: 'Swapped', discarded: card('JC') }));
-  expect(t.state.power).toBeNull();
+  expect(swap.events).toContainEqual(
+    expect.objectContaining({ type: 'Swapped', discarded: card('JC'), power: 'BLIND_SWAP' }),
+  );
+  expect(t.state.power).toMatchObject({ type: 'BLIND_SWAP', step: 'CHOOSE' });
+  expect(eventTypes(t.apply({ type: 'POWER_SKIP' }, 'bruno').events)).toEqual([
+    'PowerSkipped',
+    'SnapWindowOpened',
+  ]);
   // Carla snaps her [1] blindly: the 6♦, wrong. Shown to all, it goes back, and the J♦ comes in as [5].
   const miss = t.snap('carla', 0);
   expect(miss.events).toEqual([
@@ -86,7 +101,7 @@ function firstRound(t: Table): void {
 
   // Turn 3 — Carla draws the 3♥ and swaps out her Q♠. Nobody snaps.
   t.draw('carla');
-  t.swap('carla', 2);
+  swapOut(t, 'carla', 2);
   expect(t.state.discard.at(-1)?.id).toBe('QS');
   t.closeWindow();
   expect(t.current).toBe('ana');
@@ -113,13 +128,13 @@ describe('example match (05-GUIAO-DE-PARTIDA)', () => {
 
     // Turn 5 — Bruno (last turn) keeps the K♦: it goes into [1] and the 4♥ goes out.
     t.draw('bruno');
-    t.swap('bruno', 0);
+    swapOut(t, 'bruno', 0);
     t.closeWindow();
     expect(t.state.gringo?.remaining).toEqual(['carla']);
 
     // Turn 6 — Carla (last turn) swaps the 2♣ into [5]; the J♦ goes out. The game ends.
     t.draw('carla');
-    t.swap('carla', 4);
+    swapOut(t, 'carla', 4);
     const end = t.closeWindow();
     expect(t.state.phase).toBe('FINISHED');
     const finished = end.events.find((e) => e.type === 'GameFinished');
@@ -173,10 +188,10 @@ describe('example match (05-GUIAO-DE-PARTIDA)', () => {
     t.apply({ type: 'POWER_BLIND_SWAP', myIndex: 0, owner: 'carla', theirIndex: 1 }, 'ana');
     t.closeWindow();
     t.draw('bruno');
-    t.swap('bruno', 0);
+    swapOut(t, 'bruno', 0);
     t.closeWindow();
     t.draw('carla');
-    t.swap('carla', 4);
+    swapOut(t, 'carla', 4);
     t.closeWindow();
     expect(t.module.getResult(t.state).standings.map((s) => [s.playerId, s.score])).toEqual([
       ['bruno', 5],

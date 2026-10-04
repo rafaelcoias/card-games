@@ -1,5 +1,6 @@
 'use client';
 
+import type { CardInstance } from '@cardroom/game-core';
 import {
   Card,
   CARD_WIDTH,
@@ -20,21 +21,39 @@ interface Point {
   y: number;
 }
 
+/** A card the viewer is looking at with a power, and where it lies ("A [2] de Ana"). */
+export interface Spotlight {
+  card: CardInstance;
+  label: string;
+}
+
 export interface CenterProps {
   scene: Pick<Scene, 'matchId' | 'drawn' | 'deckCount' | 'discard' | 'snap' | 'selfId' | 'rules' | 'phase'>;
   center: Point;
   size: CardSize;
-  caption: string | null;
   /** Tap the deck to draw (UI §4). */
   onDraw: (() => void) | null;
+  /** Shown big in the middle while it is turned, however small its grid is on screen (UI §5). */
+  spotlight: Spotlight | null;
 }
+
+/** One size up from the middle's cards, for the card being looked at. */
+const SPOTLIGHT_SIZE: Record<CardSize, CardSize> = {
+  xs: 'sm',
+  sm: 'ms',
+  ms: 'md',
+  md: 'ml',
+  ml: 'lg',
+  lg: 'xl',
+  xl: 'xl',
+};
 
 /**
  * The middle of the table (UI §1): the deck with its count, the card just
  * drawn next to it (face up for the one who drew it), and the discard pile
  * with only its top card well in view — ringed while a snap is possible.
  */
-export function Center({ scene, center, size, caption, onDraw }: CenterProps) {
+export function Center({ scene, center, size, onDraw, spotlight }: CenterProps) {
   const width = CARD_WIDTH[size];
   const height = cardHeight(size);
   const step = width + Math.max(12, width * 0.22);
@@ -80,8 +99,42 @@ export function Center({ scene, center, size, caption, onDraw }: CenterProps) {
           />
         )}
       </AnimatePresence>
-      <Caption text={caption} at={{ x: center.x, y: center.y + height / 2 + 46 }} />
+      <AnimatePresence>
+        {spotlight && (
+          <PeekSpotlight
+            key={spotlight.card.uid}
+            spotlight={spotlight}
+            at={center}
+            size={SPOTLIGHT_SIZE[size]}
+          />
+        )}
+      </AnimatePresence>
     </>
+  );
+}
+
+/** The card looked at with a power, big between the deck and the discard pile, with where it lies. */
+function PeekSpotlight({ spotlight, at, size }: { spotlight: Spotlight; at: Point; size: CardSize }) {
+  const reduced = useReducedMotion() ?? false;
+  const width = CARD_WIDTH[size];
+  const height = cardHeight(size);
+  return (
+    <motion.div
+      className="pointer-events-none absolute z-30 flex flex-col items-center gap-1.5"
+      style={{ left: at.x - width / 2, top: at.y - height / 2 - 30, width }}
+      initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.6, y: 12 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+    >
+      <span className="whitespace-nowrap rounded-full bg-ink/90 px-2.5 py-0.5 text-xs font-bold text-ivory shadow-lg ring-1 ring-gold/60">
+        <span aria-hidden="true">👁</span> {spotlight.label}
+      </span>
+      <div className="rounded-[var(--radius-card)] shadow-[0_0_32px_rgb(232_193_112/0.6)]">
+        {/* Decorative: the slot itself names the card to assistive tech. */}
+        <Card id={spotlight.card.id} size={size} label="" />
+      </div>
+    </motion.div>
   );
 }
 
@@ -192,7 +245,8 @@ function SnapRing({ center, radius, ms }: { center: Point; radius: number; ms: n
   const circumference = 2 * Math.PI * radius;
   return (
     <motion.div
-      className="pointer-events-none absolute z-[5]"
+      // Over the grids (it takes no taps), so its "Bater?" shows even where a seat comes close.
+      className="pointer-events-none absolute z-[15]"
       style={{ left: center.x - box / 2, top: center.y - box / 2, width: box, height: box }}
       initial={{ opacity: 0, scale: 0.85 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -224,31 +278,5 @@ function SnapRing({ center, radius, ms }: { center: Point; radius: number; ms: n
         Bater?
       </span>
     </motion.div>
-  );
-}
-
-/** Short announcements under the middle ("Ana espreitou a carta [2] de Bruno."). */
-function Caption({ text, at }: { text: string | null; at: Point }) {
-  return (
-    <div
-      className="pointer-events-none absolute z-40 flex -translate-x-1/2 -translate-y-1/2 justify-center"
-      style={{ left: at.x, top: at.y }}
-      aria-live="polite"
-    >
-      <AnimatePresence mode="wait">
-        {text && (
-          <motion.p
-            key={text}
-            className="w-max max-w-[min(88vw,26rem)] rounded-2xl bg-black/65 px-3 py-1 text-center text-sm font-semibold text-ivory shadow-lg backdrop-blur-sm"
-            initial={{ opacity: 0, y: 6, scale: 0.92 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.18 }}
-          >
-            {text}
-          </motion.p>
-        )}
-      </AnimatePresence>
-    </div>
   );
 }

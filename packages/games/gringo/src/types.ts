@@ -11,6 +11,8 @@ export type Phase =
   | 'POWER'
   /** A card just reached the discard pile: one player may snap a card of the same rank (rules §7). */
   | 'SNAP_WINDOW'
+  /** A snap on another player's card hit: the snapper gives them one of their own cards, into the slot left empty. */
+  | 'SNAP_GIVE'
   | 'FINISHED';
 
 /** Which ranks carry the powers (rules §6). */
@@ -41,6 +43,8 @@ export interface GringoConfig {
   initialPeekMs: number;
   turnTimeoutMs: number;
   powerTimeoutMs: number;
+  /** To choose the card given after snapping another player's card. */
+  giveTimeoutMs: number;
 }
 
 /**
@@ -64,12 +68,18 @@ export interface PowerState {
 
 /** What happened to the one snap a discard allows (public: the card is shown to everyone). */
 export interface SnapResult {
+  /** Who snapped. */
   playerId: PlayerId;
+  /** Whose card was thrown: the snapper's own, or another player's. */
+  owner: PlayerId;
+  /** The slot of `owner`'s grid the card came from. */
   index: number;
   card: CardInstance;
   hit: boolean;
-  /** Missed: the slot the penalty card went to (`null` when the deck was empty). */
+  /** Missed: the slot of the snapper's grid the penalty card went to (`null` when the deck was empty). */
   penaltyIndex: number | null;
+  /** A hit on another's card: the snapper's slot whose card filled the gap (`null` until it is chosen). */
+  given: number | null;
 }
 
 /** The window opened by a card reaching the discard pile (rules §7). */
@@ -137,8 +147,14 @@ export type GringoClientAction =
   | { type: 'POWER_SWAP_DECISION'; swap: boolean; myIndex?: number }
   /** Changed one's mind: the power is not used. */
   | { type: 'POWER_SKIP' }
-  /** One's own card thrown on the discard `discardId`, as the same rank. */
-  | { type: 'SNAP'; discardId: number; index: number };
+  /**
+   * A card thrown on the discard `discardId`, as the same rank: one's own, or
+   * `owner`'s — who, on a hit, gets one of the snapper's cards in its place.
+   * Without `owner`, one's own.
+   */
+  | { type: 'SNAP'; discardId: number; index: number; owner?: PlayerId }
+  /** After a hit on another player's card: which of one's own cards fills the slot left empty. */
+  | { type: 'SNAP_GIVE'; index: number };
 
 /** Applied by the server only (as `SYSTEM_PLAYER_ID`). */
 export type GringoSystemAction =
@@ -164,7 +180,14 @@ export type GringoEvent =
   | { type: 'TurnStarted'; playerId: PlayerId; turn: number }
   | { type: 'GringoCalled'; playerId: PlayerId; remaining: PlayerId[] }
   | { type: 'Drew'; playerId: PlayerId; deckCount: number }
-  | { type: 'Swapped'; playerId: PlayerId; index: number; discarded: CardInstance }
+  | {
+      type: 'Swapped';
+      playerId: PlayerId;
+      index: number;
+      discarded: CardInstance;
+      /** The card that went out has a power the player may now use. */
+      power: PowerType | null;
+    }
   | { type: 'DiscardedDrawn'; playerId: PlayerId; card: CardInstance; power: PowerType | null }
   | { type: 'PowerSkipped'; playerId: PlayerId }
   | { type: 'Peeked'; playerId: PlayerId; owner: PlayerId; index: number }
@@ -179,14 +202,31 @@ export type GringoEvent =
       theirIndex: number;
     }
   | { type: 'SnapWindowOpened'; discardId: number; card: CardInstance }
-  | { type: 'SnapSucceeded'; discardId: number; playerId: PlayerId; index: number; card: CardInstance }
+  | {
+      type: 'SnapSucceeded';
+      discardId: number;
+      playerId: PlayerId;
+      owner: PlayerId;
+      index: number;
+      card: CardInstance;
+    }
   | {
       type: 'SnapFailed';
       discardId: number;
       playerId: PlayerId;
+      owner: PlayerId;
       index: number;
       card: CardInstance;
       penaltyIndex: number | null;
+    }
+  /** The snapper's card `index`, face down, fills `owner`'s slot `ownerIndex`. */
+  | {
+      type: 'CardGiven';
+      discardId: number;
+      playerId: PlayerId;
+      index: number;
+      owner: PlayerId;
+      ownerIndex: number;
     }
   | { type: 'PlayerOut'; playerId: PlayerId }
   | { type: 'SnapWindowClosed'; discardId: number }

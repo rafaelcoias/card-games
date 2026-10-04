@@ -344,6 +344,9 @@ mão, pausa, pausa a decidir, fim) em **`/dev/sueca`**.
     espreitar inicial (até carregar em "Memorizei"); quem espreita com um poder, durante esse passo; todos, numa
     batida falhada e no fim. A mesa distingue as cartas viradas com fichas próprias (`token`), que as acompanham em
     trocas, descartes e batidas, e é isso que as faz deslizar de posição para posição.
+  - **Poderes também na troca** (muda o ponto #3 do kit): na sua vez, o jogador usa o poder da carta que manda para o
+    descarte — a tirada, se a descartar logo, ou a da sua grelha que sai quando troca (o evento `Swapped` diz qual,
+    em `power`). Usá-lo é sempre opcional ("Não usar"); uma carta batida continua sem poder.
   - **Ordem de um descarte com poder:** a carta vai para o descarte, o poder usa-se (`POWER`), e só depois abre a janela
     de bater sobre essa carta — ninguém bate enquanto há cartas a mudar de sítio. O "espreitar" fica até 5 s visível
     (`SYS_PEEK_END`), ou até o jogador carregar em "Já memorizei" (`POWER_PEEK_DONE`); o Rei espera a decisão de
@@ -351,13 +354,22 @@ mão, pausa, pausa a decidir, fim) em **`/dev/sueca`**.
   - **Trocas que se seguem com os olhos.** Numa troca entre grelhas (Valete, Rei) as duas posições acendem-se, as cartas
     deslizam devagar (0,8 s) e ficam marcadas até à vez seguinte; a janela de bater só começa a contar depois disso
     (`SnapWindow.leadMs` = 2,2 s). Cada carta que se pode tocar diz o que o toque faz: ⇄ trocar, 👁 espreitar,
-    ✋ bater; por cima das cartas, uma indicação explica cada passo do poder, com o tempo que falta.
+    ✋ bater, 🎁 dar; por cima das cartas, numa faixa de altura fixa (a mesa nunca salta), uma indicação explica cada
+    passo, com o tempo que falta. A carta espreitada aparece também em grande no meio da mesa, com onde está ("A [3] de
+    Ana"), por pequena que seja a grelha no ecrã; com uma carta de poder na mão, os botões são "Usar poder" e "Só
+    descartar", para nunca se perder o poder sem querer.
   - **Bater.** Cada batida nomeia o seu `discardId`; a fila única da sala ordena as batidas simultâneas e só a primeira
     conta. Depois dela a janela fica fechada e o resultado fica na mesa 1,1 s (certa) ou 2,3 s (errada: a carta é
     mostrada 1,5 s e entra a de penalização). Como no Olho, o próximo passo automático deriva do estado
     (`scheduleFor`), por isso nunca se perde quando uma ação chega antes. Na UI bate-se com dois toques na carta.
+  - **Bater a carta de outro.** Quem sabe que outro jogador tem uma carta igual à do descarte pode batê-la
+    (`SNAP` com `owner`): se acertar, a carta dele vai para o descarte e quem bateu escolhe uma carta sua para lhe dar
+    (`SNAP_GIVE`, fase `SNAP_GIVE`), que vai virada para baixo para a posição exata que ficou vazia — é quem bate que
+    fica com menos uma carta. Se errar, a carta do outro é mostrada a todos e volta ao lugar, e a penalização é de quem
+    bateu. Só pode bater cartas alheias quem tem uma carta para dar; enquanto a deve, a janela não fecha e o relógio é
+    dele (10 s; ao fim dá a primeira).
   - **Tempos:** espreitar inicial 10 s (acaba antes se todos memorizarem), tirar 30 s e decidir 30 s (ao fim: tira e
-    descarta, sem poder), poder 20 s (ao fim: ignorado; o Rei não troca).
+    descarta, sem poder), poder 20 s (ao fim: ignorado; o Rei não troca), dar a carta depois de bater a de outro 10 s.
   - **Casos que o kit não cobre**, decididos e testados: a carta tirada só pode trocar com uma posição que tenha carta;
     um poder que mexe na grelha de outro só existe se alguém mais tiver cartas; quem chama Gringo sem cartas não joga
     mais nada nessa vez; quem fica sem cartas durante a última volta já não precisa de a jogar.
