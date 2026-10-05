@@ -319,8 +319,9 @@ mão, pausa, pausa a decidir, fim) em **`/dev/sueca`**.
   - **Ritmo no motor.** Uma vaza decidida fica na mesa (`trick.closing`) e só sai com `SYS_CLOSE_TRICK`: 1,5 s depois
     de um corte (carimbo + recolha), 1,1 s quando todos passaram. O resumo do jogo dura 4,5 s. Como no Blackjack, o
     próximo passo automático deriva do estado (`scheduleFor`).
-  - **Casos que o kit não cobre**, decididos e testados: quando a vez voltaria a quem jogou por último — todos os
-    outros passaram ou foram saltados — a vaza é dele; quem só tem um 2/joker com a opção desligada é saltado
+  - **Casos que o kit não cobre**, decididos e testados: quando a vez volta a quem jogou por último, a vaza só é dele
+    se todos os outros passaram; quem foi apenas saltado continua na vaza (§8.3), por isso quem jogou por último volta
+    a jogar ou passa, e o saltado ainda escolhe se joga ou passa; quem só tem um 2/joker com a opção desligada é saltado
     automaticamente (e o jogo acaba se só restarem bloqueados); se o Olho anterior saiu, começa o pior classificado que
     ainda está à mesa; quem sai e volta antes do fim do jogo retoma as suas cartas; com menos de 3 sentados a mesa
     espera (`WAITING`) e recomeça quando alguém se senta.

@@ -98,9 +98,13 @@ describe('olho scene', () => {
   });
 
   it('marks passes and skips, and guesses who is next', () => {
-    const passed = one(applyEvent(scene(), { type: 'Passed', playerId: 'op' }));
+    const meOut = { ...view().trick, passed: ['me'] };
+    const passed = one(applyEvent(scene({ trick: meOut }), { type: 'Passed', playerId: 'op' }));
     expect(seatOf(passed.scene, 'op')?.passed).toBe(true);
-    expect(passed.scene.currentPlayerId).toBeNull(); // back to Zé, who played last
+    expect(passed.scene.currentPlayerId).toBeNull(); // back to Zé, who played last: everyone else passed
+    // Someone only skipped is still in the trick: Zé, who played last, goes again.
+    const meSkipped = one(applyEvent(scene(), { type: 'Passed', playerId: 'op' }));
+    expect(meSkipped.scene.currentPlayerId).toBe('ze');
     const pending = one(applyEvent(scene(), { type: 'SkipPending', targetId: 'op', rank: '9', count: 1 }));
     expect(pending.scene.trick.skip).toEqual({ targetId: 'op', rank: '9', count: 1 });
     const skipped = one(applyEvent(pending.scene, { type: 'Skipped', playerId: 'op' }));

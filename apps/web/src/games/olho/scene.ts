@@ -152,14 +152,21 @@ function withSeat(scene: Scene, playerId: PlayerId, update: (seat: SeatScene) =>
   return { ...scene, seats: scene.seats.map((seat) => (seat.id === playerId ? update(seat) : seat)) };
 }
 
-/** Best guess of who plays next (the view confirms it on commit): clockwise, still in the trick. */
+/**
+ * Best guess of who plays next (the view confirms it on commit): clockwise,
+ * still in the trick. Back at whoever played last, the trick is over only if
+ * nobody else is still in it (a skipped player is).
+ */
 export function nextInTrick(scene: Pick<Scene, 'seats' | 'trick'>, from: PlayerId): PlayerId | null {
   const n = scene.seats.length;
   const index = scene.seats.findIndex((s) => s.id === from);
+  const stillIn = (seat: SeatScene) =>
+    !(seat.handCount === 0 || seat.blocked || seat.leaving || scene.trick.passed.includes(seat.id));
   for (let step = 1; step < n; step++) {
     const seat = scene.seats[(index + step) % n] as SeatScene;
-    const out = seat.handCount === 0 || seat.blocked || seat.leaving || scene.trick.passed.includes(seat.id);
-    if (!out) return seat.id === scene.trick.lastPlayerId ? null : seat.id;
+    if (!stillIn(seat)) continue;
+    if (seat.id !== scene.trick.lastPlayerId) return seat.id;
+    return scene.seats.some((other) => other.id !== seat.id && stillIn(other)) ? seat.id : null;
   }
   return null;
 }

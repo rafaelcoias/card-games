@@ -216,9 +216,41 @@ describe('skips (07 §3)', () => {
     const equal = t.play('b', '9D', '9C');
     expect(equal.events.at(-1)).toEqual({ type: 'Skipped', playerId: 'c' });
     expect(t.current).toBe('a');
-    // Back to whoever played last through a pass: the trick is theirs.
-    const closed = t.pass('a');
+    t.pass('a');
+    // Carla was only skipped: she has not passed, so the trick is not Bruno's yet.
+    expect(t.state.trick.closing).toBeNull();
+    expect(t.current).toBe('b');
+    expect(t.module.getValidActions(t.state, 'b')).toContainEqual({ type: 'PASS' });
+    t.pass('b');
+    // Now she chooses: she may play over Bruno's pair, or pass.
+    expect(t.current).toBe('c');
+    const closed = t.pass('c');
     expect(closed.events.at(-1)).toMatchObject({ type: 'TrickClosed', winnerId: 'b' });
+  });
+
+  it('a skipped player is still in the trick: the turn comes back to whoever skipped them (three players)', () => {
+    const t = Table.scripted([{ a: ['3C', '7S', 'KH'], b: ['7D', '6D', 'QH'], c: ['5H', '9S', 'AH'] }]);
+    t.play('a', '7S');
+    // Bruno plays the same 7: Carla is skipped; Ana passes.
+    expect(t.play('b', '7D').events.at(-1)).toEqual({ type: 'Skipped', playerId: 'c' });
+    t.pass('a');
+    // Back to Bruno: he may play on his own 7, or pass and let Carla choose.
+    expect(t.state.trick.closing).toBeNull();
+    expect(t.current).toBe('b');
+    t.pass('b');
+    expect(t.current).toBe('c');
+    t.play('c', 'AH');
+    // Ana and Bruno passed: nobody else is in the trick, so it is Carla's.
+    expect(t.state.trick.closing).toMatchObject({ reason: 'ALL_PASSED', winnerId: 'c' });
+  });
+
+  it('the one who skipped may also play on their own cards', () => {
+    const t = Table.scripted([{ a: ['3C', '7S', 'KH'], b: ['7D', '6D', 'QH'], c: ['5H', '9S', 'AH'] }]);
+    t.play('a', '7S');
+    t.play('b', '7D');
+    t.pass('a');
+    t.play('b', 'QH');
+    expect(t.current).toBe('c');
   });
 
   it('never skips on 2s: a 2 cannot answer a 2, only more 2s or a joker', () => {

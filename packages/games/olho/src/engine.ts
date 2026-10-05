@@ -35,6 +35,7 @@ import {
   currentPlayerId,
   handOf,
   inGame,
+  inTrick,
   isBlocked,
   nextInTrick,
   openerFrom,
@@ -546,8 +547,10 @@ function commitPlay(d: Draft, playerId: PlayerId, cards: Card[], escape: boolean
 }
 
 /**
- * The turn moves on from `from`. Once it would come back to whoever played
- * last — everybody else passed, or was skipped — the trick is theirs (rules §8.5).
+ * The turn moves on from `from`. The trick is decided once everybody else
+ * still in it has passed (rules §8.5). A player who was only skipped has not:
+ * they stay in the trick (§8.3), so when the turn comes back to whoever played
+ * last, that player plays again or passes — and the skipped one gets to choose.
  */
 function advance(d: Draft, from: PlayerId): void {
   const { s } = d;
@@ -561,7 +564,9 @@ function advance(d: Draft, from: PlayerId): void {
     } else endGame(d, standingOrder(s));
     return;
   }
-  if (next === null || next === s.trick.lastPlayerId) {
+  const lastOneStanding =
+    next === s.trick.lastPlayerId && !s.seats.some((id) => id !== next && inTrick(s, id));
+  if (next === null || lastOneStanding) {
     closeTrick(d, 'ALL_PASSED');
     return;
   }
