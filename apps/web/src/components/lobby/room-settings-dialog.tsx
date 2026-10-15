@@ -1,6 +1,6 @@
 'use client';
 
-import type { ConfigValue } from '@cardroom/game-core';
+import { matchingPreset, type ConfigField, type ConfigValue } from '@cardroom/game-core';
 import type { RoomState } from '@cardroom/shared';
 import clsx from 'clsx';
 import { AnimatePresence, motion } from 'motion/react';
@@ -70,6 +70,25 @@ export function RoomSettingsDialog({ open, onClose, room }: RoomSettingsDialogPr
     maxPlayersByGame[game.id] !== undefined ||
     game.settings.some((s) => settings[settingKey(game.id, s.key)] !== undefined);
   const gameChanged = room !== undefined && game.id !== room.gameId;
+  /**
+   * A setting chosen by hand. A preset also sets the settings it names; any
+   * other change turns each preset into the option the settings now match
+   * (or its "custom" value).
+   */
+  const choose = (key: string, value: ConfigValue) => {
+    const field = game.settings.find((s) => s.key === key);
+    const next: Record<string, ConfigValue> = { ...config, [key]: value };
+    Object.assign(next, field?.presets?.[String(value)] ?? {});
+    for (const preset of game.settings) {
+      if (preset.presets && preset.key !== key) next[preset.key] = matchingPreset(preset, next);
+    }
+    setSettings((current) => ({
+      ...current,
+      ...Object.fromEntries(Object.entries(next).map(([k, v]) => [settingKey(game.id, k), v])),
+    }));
+  };
+  const prominent = game.settings.filter((s) => s.prominent);
+  const groups = groupSettings(game.settings.filter((s) => !s.prominent));
   const playerCounts = Array.from(
     { length: game.maxPlayers - game.minPlayers + 1 },
     (_, i) => game.minPlayers + i,
@@ -146,6 +165,15 @@ export function RoomSettingsDialog({ open, onClose, room }: RoomSettingsDialogPr
           <GameBlurb game={game} />
         </section>
 
+        {prominent.map((setting) => (
+          <PresetCards
+            key={`${game.id}-${setting.key}`}
+            setting={setting}
+            value={valueOf(setting.key)}
+            onChange={(value) => choose(setting.key, value)}
+          />
+        ))}
+
         <Segmented
           legend="Visibilidade"
           options={[
@@ -204,22 +232,30 @@ export function RoomSettingsDialog({ open, onClose, room }: RoomSettingsDialogPr
                     value={maxPlayers}
                     onChange={(n) => setMaxPlayersByGame((m) => ({ ...m, [game.id]: n }))}
                   />
-                  {game.settings.map((setting) => (
-                    <Segmented
-                      key={`${game.id}-${setting.key}`}
-                      legend={setting.label}
-                      help={setting.help}
-                      options={setting.options.map((option) => ({
-                        ...option,
-                        // Options that could never seat this many players (e.g. not enough cards).
-                        disabled:
-                          game.validateTable({ ...config, [setting.key]: option.value }, maxPlayers) !== null,
-                      }))}
-                      value={valueOf(setting.key)}
-                      onChange={(value) =>
-                        setSettings((s) => ({ ...s, [settingKey(game.id, setting.key)]: value }))
-                      }
-                    />
+                  {groups.map(({ group, settings: fields }) => (
+                    <div key={group ?? ''} className="flex flex-col gap-5">
+                      {group && (
+                        <p className="-mb-2 text-xs font-bold uppercase tracking-[0.14em] text-subtle">
+                          {group}
+                        </p>
+                      )}
+                      {fields.map((setting) => (
+                        <Segmented
+                          key={`${game.id}-${setting.key}`}
+                          legend={setting.label}
+                          help={setting.help}
+                          options={setting.options.map((option) => ({
+                            ...option,
+                            // Options that could never be played here (e.g. not enough cards, rules that lock).
+                            disabled:
+                              game.validateTable({ ...config, [setting.key]: option.value }, maxPlayers) !==
+                              null,
+                          }))}
+                          value={valueOf(setting.key)}
+                          onChange={(value) => choose(setting.key, value)}
+                        />
+                      ))}
+                    </div>
                   ))}
                 </div>
               </motion.div>
@@ -233,6 +269,66 @@ export function RoomSettingsDialog({ open, onClose, room }: RoomSettingsDialogPr
         </section>
       </div>
     </Modal>
+  );
+}
+
+/** Settings in their groups, in the order the game lists them (ungrouped ones first). */
+function groupSettings(fields: readonly ConfigField[]): { group?: string; settings: ConfigField[] }[] {
+  const groups: { group?: string; settings: ConfigField[] }[] = [];
+  for (const field of fields) {
+    const last = groups.at(-1);
+    if (last && last.group === field.group) last.settings.push(field);
+    else groups.push({ group: field.group, settings: [field] });
+  }
+  return groups;
+}
+
+/** A game's presets as big cards, always in sight: each says in a line what it changes. */
+function PresetCards({
+  setting,
+  value,
+  onChange,
+}: {
+  setting: ConfigField;
+  value: ConfigValue | undefined;
+  onChange: (value: ConfigValue) => void;
+}) {
+  const id = useId();
+  // The "custom" option is a state the host reaches by changing a setting, not a card to pick.
+  const options = setting.options.filter((o) => o.value !== setting.customValue || o.value === value);
+  return (
+    <div role="radiogroup" aria-labelledby={id}>
+      <p id={id} className="mb-2 text-sm font-medium">
+        {setting.label}
+      </p>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {options.map((option) => {
+          const checked = option.value === value;
+          return (
+            <button
+              key={String(option.value)}
+              type="button"
+              role="radio"
+              aria-checked={checked}
+              onClick={() => onChange(option.value)}
+              className={clsx(
+                'flex min-h-20 flex-col items-start justify-center gap-1 rounded-xl border px-3 py-2.5 text-left transition-colors',
+                checked
+                  ? 'border-gold/70 bg-gold/10 shadow-[0_0_0_1px_rgb(232_193_112/0.35)_inset]'
+                  : 'border-line-strong bg-surface-2/60 hover:border-white/25 hover:bg-surface-2',
+              )}
+            >
+              <span
+                className={clsx('font-display text-base font-semibold', checked ? 'text-gold' : 'text-ivory')}
+              >
+                {option.label}
+              </span>
+              {option.hint && <span className="text-xs leading-snug text-subtle">{option.hint}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

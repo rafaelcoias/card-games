@@ -539,6 +539,8 @@ function Rematch({
   const inForRematch = me?.ready === true;
   const missing = room.players.filter((p) => !p.ready);
   const tooFew = room.players.length < (game?.minPlayers ?? 2);
+  // Rooms may turn the rematch button off (Pepe Rápido's "Revanche").
+  const rematchOff = room.config.rematch === false;
 
   const toggle = async () => {
     setSending(true);
@@ -558,7 +560,11 @@ function Rematch({
   return (
     <>
       {/* A label, not a heading: the dialog keeps a single title (the result). */}
-      <section className="mt-5 rounded-xl bg-white/3 px-4 py-3" aria-labelledby="rematch-label">
+      <section
+        hidden={rematchOff}
+        className="mt-5 rounded-xl bg-white/3 px-4 py-3"
+        aria-labelledby="rematch-label"
+      >
         <p id="rematch-label" className="text-xs font-bold uppercase tracking-[0.14em] text-subtle">
           Jogar outra vez
         </p>
@@ -587,14 +593,16 @@ function Rematch({
         <Button variant="secondary" onClick={onClose}>
           Voltar à sala
         </Button>
-        <Button
-          variant={inForRematch ? 'secondary' : 'primary'}
-          onClick={() => void toggle()}
-          loading={sending}
-          disabled={tooFew && !inForRematch}
-        >
-          {inForRematch ? 'Afinal, não' : 'Jogar outra vez'}
-        </Button>
+        {!rematchOff && (
+          <Button
+            variant={inForRematch ? 'secondary' : 'primary'}
+            onClick={() => void toggle()}
+            loading={sending}
+            disabled={tooFew && !inForRematch}
+          >
+            {inForRematch ? 'Afinal, não' : 'Jogar outra vez'}
+          </Button>
+        )}
       </div>
     </>
   );

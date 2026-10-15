@@ -338,7 +338,10 @@ function ShareCode({ code }: { code: string }) {
 
 /** The table's rules, read from the game's settings metadata, visible to everyone before starting. */
 function SettingsSummary({ room, game }: { room: RoomState; game: GameClientDefinition | undefined }) {
+  // With a preset in sight (Pepe Rápido), the rest shows only where it differs from the defaults.
+  const presets = game?.settings.some((f) => f.prominent) ?? false;
   const settings = (game?.settings ?? []).flatMap((field) => {
+    if (presets && !field.prominent && room.config[field.key] === game?.defaults[field.key]) return [];
     const option = field.options.find((o) => o.value === room.config[field.key]);
     return option ? [{ key: field.key, label: field.label, value: option.label }] : [];
   });

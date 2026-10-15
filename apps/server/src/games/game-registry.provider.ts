@@ -8,6 +8,7 @@ import { gringo } from '@cardroom/gringo';
 import { mexicana } from '@cardroom/mexicana';
 import { olho } from '@cardroom/olho';
 import { peixinho } from '@cardroom/peixinho';
+import { pepeRapido } from '@cardroom/pepe-rapido';
 import { sueca } from '@cardroom/sueca';
 
 /**
@@ -17,6 +18,7 @@ import { sueca } from '@cardroom/sueca';
 export function createGameRegistry(): GameRegistry {
   const registry = new GameRegistry().register(mexicana).register(fodinha).register(blackjack);
   registry.register(peixinho).register(desconfia).register(olho).register(gringo).register(sueca);
+  registry.register(pepeRapido);
   // registry.register(highCard);
   return registry;
 }

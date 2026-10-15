@@ -115,6 +115,18 @@ const MESSAGES: Record<string, string> = {
   NO_LAST_TRICK: 'Ainda não há nenhuma vaza fechada.',
   LAST_TRICK_USED: 'Já viste a última vaza nesta mão.',
   PAUSED: 'A mesa está à espera de um jogador.',
+  // Pepe Rápido engine (a race lost is never shown: the card just goes back)
+  TOP_CHANGED: 'O outro jogador foi mais rápido.',
+  CARD_MOVED: 'Essa carta já não está no topo da coluna.',
+  EMPTY_PILE: 'Ainda não se virou nenhuma carta para esse monte.',
+  INVALID_MOVE: 'Essa carta não vai para aí.',
+  GROUPING_OFF: 'Nesta mesa não se agrupam cartas.',
+  MOVE_OFF: 'Nesta mesa as colunas vazias ficam vazias.',
+  NOT_EMPTY: 'Essa coluna não está vazia.',
+  NO_RESERVE: 'Não tens reserva: vira só o outro jogador.',
+  ALREADY_REQUESTED: 'Já pediste para virar.',
+  NOT_ROUND_WINNER: 'Quem escolhe o monte é o outro jogador.',
+  ACES_STUCK: 'Só acima, sem jokers e sem ligar o Ás ao Rei, os Ases nunca saem.',
 };
 
 export function describeError(error: ErrorPayload): string {

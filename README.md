@@ -9,7 +9,9 @@ especificação em `desconfia-kit/`), o **Olho** (o *Presidente* português: liv
 cargo e trocar cartas no jogo seguinte, numa mesa contínua; especificação em `olho-kit/`) e o **Gringo** (memória e
 pontos baixos: quatro cartas viradas para baixo em posições fixas, só se conhecem duas; trocar, espreitar e bater
 cartas iguais; especificação em `gringo-kit/`), e a **Sueca** (dois contra dois, parceiros frente a frente: 40
-cartas, trunfo e obrigação de assistir; especificação em `sueca-kit/`).
+cartas, trunfo e obrigação de assistir; especificação em `sueca-kit/`), e o **Pepe Rápido** (dois jogadores ao mesmo
+tempo, sem vezes: despejar cinco colunas nos dois montes do meio, uma acima ou uma abaixo; especificação em
+`pepe-rapido-kit/`).
 O jogo trivial "Carta Mais Alta" (`packages/games/high-card`) está desativado: o registo está comentado no servidor e
 no cliente.
 
@@ -42,6 +44,7 @@ packages/
     olho/       Motor puro do Olho (sem I/O)
     gringo/     Motor puro do Gringo (sem I/O)
     sueca/      Motor puro da Sueca (sem I/O)
+    pepe-rapido/ Motor puro do Pepe Rápido (sem I/O)
     high-card/  Jogo trivial (desativado)
   ui/         Baralho SVG (sprite + gerador) e componentes animados (Card, CardFan, …)
 firebase.json, firestore.rules, firestore.indexes.json   Configuração Firebase + emuladores
@@ -162,7 +165,7 @@ persistem em `.firebase-data/`.
 | `pnpm dev` | Tudo em modo desenvolvimento (Turborepo) |
 | `pnpm build` | Build de produção de todos os workspaces |
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Qualidade (ESLint com tipos, TS strict, Prettier) |
-| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana, do Peixinho, do Desconfia, do Olho e do Gringo, **100 000 mãos** de Sueca (`SUECA_SIMULATION_HANDS` encurta-as) e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
+| `pnpm test` | Testes unitários, incluindo **10 000 partidas simuladas** da Mexicana, do Peixinho, do Desconfia, do Olho e do Gringo, **40 000** do Pepe Rápido (10 000 por predefinição e 10 000 com salas ao calhas; `PEPE_SIMULATION_GAMES` encurta-as), **100 000 mãos** de Sueca (`SUECA_SIMULATION_HANDS` encurta-as) e a **validação estatística do Blackjack** (10 milhões de mãos; `BLACKJACK_SIMULATION_HANDS` encurta-a) |
 | `pnpm --filter @cardroom/server test:int` | Repositórios Firestore contra o emulador |
 | `pnpm --filter @cardroom/server test:e2e` | Clientes Socket.IO jogam partidas completas (com reconexão; no Desconfia e no Gringo, com desconfianças/batidas simultâneas de que só uma conta) e sessões de Blackjack e de Olho onde se entra e sai a meio, a vida de uma sala entre partidas (jogar outra vez, mudar o jogo, fechar quando o anfitrião sai) e uma Sueca com lugares escolhidos, chat fechado durante a mão, uma pausa a meio de uma vaza que retoma o relógio exato e o anfitrião a terminar sem resultado (`E2E_SERVER_URLS=url1,url2` reparte por 2 instâncias) |
 | `pnpm test:e2e` | Playwright: registo, login, link por e-mail, recuperação de palavra-passe, partidas completas (incluindo o Peixinho a 3, e o Desconfia e o Gringo a 4, com um recarregar a meio, e a Sueca a 4, com escolha de parceiros e um jogador que sai e volta a meio da mão) e sessões de Blackjack e de Olho pela UI |
@@ -181,7 +184,9 @@ quatro iguais, joker, ninguém bateu, troca do Presidente, troca do Olho, resumo
 **`/dev/olho`**, e os do Gringo (espreitar inicial, a tua vez, carta tirada, carta com poder, cada poder, espreitam-te,
 janela de bater, bateu, errou, troca às cegas, Gringo, revelação final, 10 jogadores) em **`/dev/gringo`**, e os da
 Sueca (sala com lugares, cortas tu, outro corta, a tua vez, trunfo à vista, dás tu, vaza fechada, última vaza, resumo da
-mão, pausa, pausa a decidir, fim) em **`/dev/sueca`**.
+mão, pausa, pausa a decidir, fim) em **`/dev/sueca`**. O **`/dev/pepe`** é uma mesa jogável do Pepe Rápido contra um bot,
+com o motor e o relógio a correr na página e 80 ms de latência simulada (clássico, iniciante, adversário lento, escolher
+monte, ronda 2).
 
 ## Decisões e notas
 
@@ -379,6 +384,34 @@ mão, pausa, pausa a decidir, fim) em **`/dev/sueca`**.
   - **Simulação.** 10 000 partidas de 2 a 10 bots (com memória perfeita ou ao calhas, batidas com probabilidades
     diferentes e opções da sala sorteadas) verificam em cada passo a conservação das cartas, que os índices das
     grelhas só crescem e nunca mudam, e que há no máximo uma batida por descarte; acabam todas (média ~105–140 ações).
+- **Pepe Rápido.** Regras do `pepe-rapido-kit/02` com as propostas do `09` aceites: 2 jogadores, 54 cartas (27 cada)
+  ou 52 sem jokers, colunas de 1 a 5 e o resto em reserva; sem vezes. Sem alterações ao núcleo de jogo.
+  - **Configuração da sala.** As opções do `02 §9` e três predefinições (Clássico, Puro, Iniciante). Para isso o
+    `ConfigField` ganhou campos genéricos: `prominent` (cartões sempre à vista, fora de "Personalizar"), `presets` e
+    `customValue` (escolher uma predefinição preenche as outras opções; mudar uma à mão passa a "Personalizado"),
+    `group` (secções Regras · Informação visível · Ritmo · Partida) e `hint` nas opções. O schema normaliza a
+    predefinição no servidor. A opção `rematch` esconde "Jogar outra vez" nos resultados (`room.config.rematch`).
+  - **Uma combinação recusada.** Só acima, sem jokers e sem ligar o Ás ao Rei, os Ases nunca saem das colunas: ~85% das
+    partidas simuladas bloqueavam. `validateTable` recusa-a (a sala risca as opções que lá levam).
+  - **Corridas.** A fila única da sala decide a ordem; `resolveRace` (única função a decidir quem chegou primeiro)
+    recusa a jogada se o topo do monte já não é o que o jogador viu (`expectedTopUid`). As ações levam também o
+    `cardUid` da carta movida, para que uma sequência rápida de jogadas otimistas nunca mova outra carta. Uma recusa
+    chega só a quem jogou, pelo acknowledgement da ação (não há evento `Rejected` difundido à sala).
+  - **Relógio.** A contagem 3-2-1, o bloqueio (vira sozinho ao fim de `autoFlipDelayMs`, ou de 20 s sem essa opção),
+    um "Virar" pedido por um só (o outro tem 15 s para jogar ou concordar) e a escolha do monte (15 s, depois sorteado
+    com a seed) usam o temporizador da plataforma, por isso quem cai é substituído como nos outros jogos. "Virar"
+    pede o acordo de todos os que têm reserva, mesmo quando ainda há jogadas; sem reservas, os montes voltam baralhados
+    para baixo das colunas (09 #7).
+  - **Fim.** Ganha quem esvazia as colunas sem reserva (ficou sem cartas). Salvaguarda fora do kit: 4 reposições
+    seguidas dos montes sem nenhuma carta jogada terminam a partida e ganha quem tem menos cartas (empate partilha).
+    `score` = cartas que sobraram (o kit sugeria o nº de rondas, que fica no `summary`).
+  - **Informação oculta.** Contagens dos montes, da reserva própria e do adversário vão a `null` no servidor quando a
+    opção está desligada; os testes serializam vistas e eventos e procuram cartas tapadas.
+  - **Mesa.** Feltro azul; o adversário em cima, tu em baixo, montes e reservas ao centro, botão "Virar" (Espaço) que
+    pulsa no bloqueio. UI otimista (`games/shared/use-optimistic.ts`, reutilizável): a carta move-se no toque,
+    arrastar, tocar e tocar no destino, ou duplo toque para o monte onde serve; recusada, volta com um tremor curto.
+  - **Testes.** Cenários C1–C16 do `05`, cobertura do motor 100% das linhas. Não há ainda e2e de sockets nem
+    Playwright para este jogo.
 - **Sueca.** Regras do `sueca-kit/02` com as propostas do `09` aceites: 4 jogadores reais (sem bots), 40 cartas
   (sem 8, 9 e 10), Ás · 7 · Rei · Valete · Dama · 6…2 (11, 10, 4, 3, 2 pontos), sentido contrário aos ponteiros do
   relógio. Quem dá é sorteado na primeira mão; quem corta (à esquerda) escolhe "de cima" ou "de baixo" e essa carta é o

@@ -23,6 +23,7 @@
     "@cardroom/mexicana": "workspace:*",
     "@cardroom/olho": "workspace:*",
     "@cardroom/peixinho": "workspace:*",
+    "@cardroom/pepe-rapido": "workspace:*",
     "@cardroom/shared": "workspace:*",
     "@cardroom/sueca": "workspace:*",
     "@cardroom/ui": "workspace:*",

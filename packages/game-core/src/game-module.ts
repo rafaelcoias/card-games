@@ -159,12 +159,43 @@ export const sessionActions = {
 
 export type ConfigValue = string | number | boolean;
 
+export interface ConfigOption {
+  readonly label: string;
+  readonly value: ConfigValue;
+  /** A line under the label, for options that need one (e.g. what a preset changes). */
+  readonly hint?: string;
+}
+
 /** One room setting, described so the lobby can render it without game-specific code. */
 export interface ConfigField {
   readonly key: string;
   readonly label: string;
   readonly help?: string;
-  readonly options: readonly { readonly label: string; readonly value: ConfigValue }[];
+  readonly options: readonly ConfigOption[];
+  /** Heading the setting is listed under, among the others of the same group. */
+  readonly group?: string;
+  /** Shown above "Personalizar", always in sight (e.g. a game's presets). */
+  readonly prominent?: boolean;
+  /**
+   * A preset: choosing an option also sets these other settings, keyed by
+   * `String(option.value)`. Changing one of them by hand turns this setting
+   * into `customValue` (or into the preset they now match).
+   */
+  readonly presets?: Readonly<Record<string, Readonly<Record<string, ConfigValue>>>>;
+  readonly customValue?: ConfigValue;
+}
+
+/**
+ * The option of a preset setting that `config` matches, or its `customValue`.
+ * Shared by the lobby (as the host edits) and by engines (to normalise a room's config).
+ */
+export function matchingPreset(field: ConfigField, config: Readonly<Record<string, unknown>>): ConfigValue {
+  const presets = field.presets ?? {};
+  const found = field.options.find((option) => {
+    const values = presets[String(option.value)];
+    return values !== undefined && Object.entries(values).every(([key, value]) => config[key] === value);
+  });
+  return found?.value ?? field.customValue ?? (config[field.key] as ConfigValue);
 }
 
 /**

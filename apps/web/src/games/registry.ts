@@ -8,6 +8,7 @@ import { gringo } from '@cardroom/gringo';
 import { mexicana } from '@cardroom/mexicana';
 import { olho } from '@cardroom/olho';
 import { peixinho } from '@cardroom/peixinho';
+import { pepeRapido } from '@cardroom/pepe-rapido';
 import { sueca } from '@cardroom/sueca';
 import { BlackjackTable } from './blackjack/table';
 import { DesconfiaTable } from './desconfia/table';
@@ -17,6 +18,7 @@ import { GringoTable } from './gringo/table';
 import { MexicanaTable } from './mexicana/table';
 import { OlhoTable } from './olho/table';
 import { PeixinhoTable } from './peixinho/table';
+import { PepeTable } from './pepe-rapido/table';
 import { SEAT_LABEL, TEAM_COLOR, TEAM_NAME } from './sueca/copy';
 import { SuecaResultDetails } from './sueca/results';
 import { SuecaTable } from './sueca/table';
@@ -131,6 +133,17 @@ export const GAME_CLIENTS: GameClientDefinition[] = [
     seats: { labels: SEAT_LABEL, teamNames: TEAM_NAME, teamColors: TEAM_COLOR },
     ResultDetails: SuecaResultDetails,
     Table: SuecaTable,
+  }),
+  define(pepeRapido, {
+    tagline:
+      'Dois jogadores ao mesmo tempo, sem vezes: despeja as tuas colunas nos montes do meio, uma acima ou uma abaixo. Ganha quem ficar sem cartas.',
+    defaultMaxPlayers: 2,
+    resultStyle: 'placement',
+    // The last card lands and the confetti falls first.
+    resultDelayMs: 1800,
+    scoreUnit: ['carta', 'cartas'],
+    resultNote: 'Ganha o primeiro a ficar sem cartas; ao lado, as cartas que cada um ainda tinha.',
+    Table: PepeTable,
   }),
   // define(highCard, {
   //   tagline: 'Um aquecimento rápido: a carta mais alta ganha a ronda.',

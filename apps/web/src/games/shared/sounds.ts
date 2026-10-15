@@ -13,7 +13,11 @@ export type SoundName =
   | 'gringo'
   | 'yourTurn'
   | 'chat'
-  | 'handEnd';
+  | 'handEnd'
+  | 'flip'
+  | 'reject'
+  | 'tick'
+  | 'win';
 
 const STORAGE_KEY = 'cardroom:sound';
 
@@ -109,6 +113,10 @@ export function playSound(name: SoundName): void {
     yourTurn: { freq: [660, 880], dur: 0.12, type: 'sine', vol: 0.1 },
     chat: { freq: [990], dur: 0.05, type: 'triangle', vol: 0.07 },
     handEnd: { freq: [523, 392], dur: 0.16, type: 'sine', vol: 0.07 },
+    flip: { freq: [440, 660], dur: 0.05, type: 'triangle', vol: 0.1 },
+    reject: { freq: [220], dur: 0.05, type: 'sine', vol: 0.04 },
+    tick: { freq: [880], dur: 0.04, type: 'sine', vol: 0.06 },
+    win: { freq: [523, 659, 784, 1047], dur: 0.1, type: 'triangle', vol: 0.11 },
   };
   const tone = tones[name];
   tone.freq.forEach((freq, i) => {

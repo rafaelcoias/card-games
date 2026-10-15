@@ -1,8 +1,4 @@
-Melhorias
-
-1. Stats por jogador, ranking tipo face it
-
-Novos jogos
+Jogos de cartas
 
 1. Pepe rapido
 
@@ -10,6 +6,20 @@ Jogos de bebida
 
 1. Piramide
 2. Corrida de cavalos
+3.
+
+Outros
+
+1. Yazi
+2. Adivinhar numero - simples cada pessoa leva um numero random
+3. Categorias - simples, letra aleatoria do alfabeto escolhita + categoria aleatoria
+4.
+
 
 take your time and implement desconfia-kit. analyse the files and then make sure to integrate the new game into the web app. really take your time to make sure you undrrstand the whole game and can build it and make it smooth like the other ones.
 when you finish, commit and push all
+
+lets do some improvements. I want this app to be used for all of the games I create. So instead of the homepage you created, it should be simplier and general. this should be the flow:
+1. User opens de web app and only shows at the top the games icon and "games" name and the login (or profile) button
+2. There is a grid of games (in mobile a grid of 2 by 2), the first one being Cards and second one being a new one that I am going to create later
+3.
